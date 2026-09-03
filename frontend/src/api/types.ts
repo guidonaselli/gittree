@@ -17,6 +17,8 @@ export type LogEntry = {
   write: boolean;
 };
 
+export type DesktopPalette = { mode: string; tokens: Record<string, string> };
+
 export type OpenRepositoryResult =
   | { kind: "Repository"; root: string }
   | { kind: "BareRepository"; root: string }

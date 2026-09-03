@@ -83,6 +83,27 @@ pub fn stop_watching(state: &WatcherState, root: &Path) {
     // WatchHandle::Native drops the debouncer here too, which stops the watch.
 }
 
+/// Watches the theme file's parent dir (a theme switch may rename the file) and emits `desktop-theme:changed`.
+pub fn start_desktop_theme_watch<R: Runtime>(
+    app: AppHandle<R>,
+    watch_dir: PathBuf,
+) -> Option<WatchHandle> {
+    let debouncer = new_debouncer(DEBOUNCE_WINDOW, move |result: DebounceEventResult| {
+        if result.is_ok() {
+            let _ = app.emit("desktop-theme:changed", ());
+        }
+    });
+    let mut debouncer = debouncer.ok()?;
+    debouncer
+        .watcher()
+        .watch(
+            &watch_dir,
+            notify_debouncer_mini::notify::RecursiveMode::Recursive,
+        )
+        .ok()?;
+    Some(WatchHandle::Native(debouncer))
+}
+
 fn spawn_poller<R: Runtime>(app: AppHandle<R>, root: PathBuf) -> WatchHandle {
     let task = tokio::spawn(async move {
         let git_dir = root.join(".git");

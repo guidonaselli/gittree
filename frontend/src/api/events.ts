@@ -8,3 +8,7 @@ export function onRepositoryChanged(handler: (root: string) => void): Promise<Un
 export function onWatchDegraded(handler: (info: { root: string; reason: string }) => void): Promise<UnlistenFn> {
   return listen<{ root: string; reason: string }>("repo:watch-degraded", (event) => handler(event.payload));
 }
+
+export function onDesktopThemeChanged(handler: () => void): Promise<UnlistenFn> {
+  return listen<void>("desktop-theme:changed", () => handler());
+}

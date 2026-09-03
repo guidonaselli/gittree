@@ -1,3 +1,4 @@
+mod desktop_theme;
 mod settings;
 mod watcher;
 
@@ -5,6 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use desktop_theme::DesktopPalette;
 use git_process::{check_git_version, ProcessLayer};
 use repo_state::{
     query_repository_state, query_submodule_matrix, OpenOutcome, RepositoryState, SubmoduleState,
@@ -146,6 +148,11 @@ fn stop_watching(watcher_state: State<'_, WatcherState>, root: String) {
     watcher::stop_watching(&watcher_state, &PathBuf::from(root));
 }
 
+#[tauri::command]
+fn get_desktop_palette() -> Result<Option<DesktopPalette>, String> {
+    desktop_theme::read_published_palette()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt::init();
@@ -177,7 +184,14 @@ pub fn run() {
             stop_watching,
             get_operation_log,
             init_repository,
+            get_desktop_palette,
         ])
+        .setup(|app| {
+            let watch_dir = desktop_theme::published_theme_watch_dir();
+            let handle = watcher::start_desktop_theme_watch(app.handle().clone(), watch_dir);
+            app.manage(std::sync::Mutex::new(handle));
+            Ok(())
+        })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
                 // Stop every watch rather than leaking on window close.

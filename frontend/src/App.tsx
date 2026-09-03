@@ -2,6 +2,7 @@ import { type Component, For, Show, createEffect, createResource, createSignal, 
 import {
   addBookmark,
   getBookmarks,
+  getDesktopPalette,
   getOperationLog,
   getRepositoryState,
   getSettings,
@@ -13,7 +14,7 @@ import {
   startWatching,
   stopWatching,
 } from "./api/commands";
-import { onRepositoryChanged, onWatchDegraded } from "./api/events";
+import { onDesktopThemeChanged, onRepositoryChanged, onWatchDegraded } from "./api/events";
 import type { Bookmark, RepositoryState, SubmoduleState } from "./api/types";
 import { OperationLogView } from "./features/operation-log/OperationLogView";
 import { RepositoryStatus } from "./features/repository/RepositoryStatus";
@@ -107,25 +108,43 @@ export const App: Component = () => {
     if (workspace.state().groups.length === 0) pathInputEl?.focus();
   });
 
-  // Explicit theme override wins over the system preference default.
-  createEffect(() => {
-    const theme = settingsResult()?.settings.theme;
-    if (theme === "light" || theme === "dark") {
-      document.documentElement.dataset.theme = theme;
-    } else {
-      delete document.documentElement.dataset.theme;
+  const [desktopPalette, { refetch: refetchDesktopPalette }] = createResource(getDesktopPalette);
+  let appliedPaletteTokens: string[] = [];
+
+  function applyTheme(explicit: string | null | undefined) {
+    const root = document.documentElement;
+    for (const token of appliedPaletteTokens) root.style.removeProperty(token);
+    appliedPaletteTokens = [];
+
+    if (explicit === "light" || explicit === "dark") {
+      root.dataset.theme = explicit;
+      return;
     }
+    delete root.dataset.theme;
+
+    const palette = desktopPalette();
+    if (palette) {
+      root.dataset.theme = palette.mode === "light" ? "light" : "dark";
+      for (const [token, value] of Object.entries(palette.tokens)) {
+        root.style.setProperty(token, value);
+        appliedPaletteTokens.push(token);
+      }
+    }
+  }
+
+  // Explicit theme override wins over desktop-sync, which wins over the
+  // system light/dark default.
+  createEffect(() => {
+    applyTheme(settingsResult()?.settings.theme);
   });
+
+  onDesktopThemeChanged(() => refetchDesktopPalette());
 
   async function setTheme(theme: string) {
     const current = settingsResult()?.settings ?? { concurrency: 8, theme: null };
     const next = { ...current, theme: theme === "system" ? null : theme };
     await saveSettings(next);
-    if (next.theme === "light" || next.theme === "dark") {
-      document.documentElement.dataset.theme = next.theme;
-    } else {
-      delete document.documentElement.dataset.theme;
-    }
+    applyTheme(next.theme);
   }
 
   let unlistenChanged: (() => void) | undefined;

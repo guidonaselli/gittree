@@ -24,6 +24,7 @@ tracing.workspace = true
 tracing-subscriber = "0.3"
 notify-debouncer-mini.workspace = true
 dirs.workspace = true
+toml = "1"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
