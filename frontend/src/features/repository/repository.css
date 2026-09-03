@@ -1,0 +1,31 @@
+.repo-status {
+  padding: var(--space-3);
+  border-bottom: var(--border-width-thin) solid var(--color-border);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  font-size: var(--font-size-sm);
+}
+
+.repo-status-branch {
+  font-weight: var(--font-weight-medium);
+}
+
+.repo-status-counts {
+  display: flex;
+  gap: var(--space-3);
+  color: var(--color-text-muted);
+}
+
+.badge-warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+  margin-left: var(--space-2);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--font-size-xs);
+}
+
+.text-danger {
+  color: var(--color-danger);
+}
