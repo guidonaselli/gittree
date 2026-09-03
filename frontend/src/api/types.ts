@@ -131,6 +131,21 @@ export type WorkingCopyStatus = {
   conflicted: ConflictEntry[];
 };
 
+export type Hunk = {
+  header: string;
+  lines: string[];
+  old_start: number;
+  old_lines: number;
+  new_start: number;
+  new_lines: number;
+};
+
+export type FileDiff = {
+  header_lines: string[];
+  hunks: Hunk[];
+  is_binary: boolean;
+};
+
 export function changeCodeLabel(c: ChangeCode): string {
   switch (c) {
     case "Modified":

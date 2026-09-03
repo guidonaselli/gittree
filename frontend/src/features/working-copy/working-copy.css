@@ -36,6 +36,60 @@
   background: var(--color-bg-subtle);
 }
 
+.working-copy-path-button {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  flex: 1;
+  padding: 0;
+}
+
+.working-copy-path-button:hover {
+  text-decoration: underline;
+}
+
+.working-copy-entry-expanded {
+  background: var(--color-bg-subtle);
+}
+
+.diff-view {
+  margin: 0 0 var(--space-3) var(--space-4);
+  border-left: var(--border-width-thick) solid var(--color-border);
+  padding-left: var(--space-2);
+}
+
+.diff-hunk {
+  margin-bottom: var(--space-2);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+}
+
+.diff-hunk-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--color-text-muted);
+  padding: var(--space-1) 0;
+}
+
+.diff-line {
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.diff-line-add {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.diff-line-remove {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
 .working-copy-entry {
   display: flex;
   align-items: center;

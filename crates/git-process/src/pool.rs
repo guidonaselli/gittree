@@ -130,7 +130,11 @@ impl ProcessLayer {
         let mut cmd = Command::new("git");
         cmd.args(&call.args)
             .current_dir(&call.repo_root)
-            .stdin(Stdio::null())
+            .stdin(if call.stdin.is_some() {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            })
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
@@ -139,7 +143,14 @@ impl ProcessLayer {
         }
 
         let started = Instant::now();
-        let child = cmd.spawn()?;
+        let mut child = cmd.spawn()?;
+
+        if let Some(input) = &call.stdin {
+            use tokio::io::AsyncWriteExt;
+            if let Some(mut stdin) = child.stdin.take() {
+                stdin.write_all(input).await?;
+            }
+        }
 
         let wait = child.wait_with_output();
         let result = tokio::select! {
@@ -242,6 +253,21 @@ mod tests {
             .unwrap();
         let snapshot = layer.log.snapshot();
         assert!(snapshot[0].write);
+    }
+
+    #[tokio::test]
+    async fn stdin_is_piped_to_the_child_process() {
+        let layer = ProcessLayer::new(2, Duration::from_secs(5));
+        let call = GitCall::new(".", ["hash-object", "--stdin"]).with_stdin(b"hello\n".to_vec());
+        let result = layer
+            .run(call, Intent::Write, CancellationToken::new())
+            .await
+            .unwrap();
+        assert!(result.ok());
+        assert_eq!(
+            result.stdout_utf8_lossy().trim(),
+            "ce013625030ba8dba906f756967f9e9ca394464a"
+        );
     }
 
     #[tokio::test]

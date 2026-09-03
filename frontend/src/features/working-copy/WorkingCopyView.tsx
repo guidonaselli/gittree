@@ -1,4 +1,4 @@
-import { type Component, For, Show, createMemo } from "solid-js";
+import { type Component, For, Show, createMemo, createSignal } from "solid-js";
 import {
   changeCodeLabel,
   isKnown,
@@ -7,21 +7,28 @@ import {
   type Resolved,
   type WorkingCopyStatus,
 } from "../../api/types";
+import { HunkDiffView } from "./HunkDiffView";
 
 function entryPathset(entry: ChangedEntry): string[] {
   return entry.rename_or_copy_from ? [entry.path, entry.rename_or_copy_from[0]] : [entry.path];
 }
+
+type Selection = { path: string; staged: boolean } | null;
 
 function EntryRow(props: {
   entry: ChangedEntry;
   code: string;
   actionLabel: string;
   onAction: (paths: string[]) => void;
+  onTogglePath: () => void;
+  expanded: boolean;
 }) {
   return (
-    <div class="working-copy-entry">
+    <div class="working-copy-entry" classList={{ "working-copy-entry-expanded": props.expanded }}>
       <span class="working-copy-code">{props.code}</span>
-      <span class="working-copy-path">{props.entry.path}</span>
+      <button class="working-copy-path working-copy-path-button" onClick={props.onTogglePath}>
+        {props.entry.path}
+      </button>
       <Show when={props.entry.rename_or_copy_from}>
         <span class="text-muted">
           from {props.entry.rename_or_copy_from![0]} ({props.entry.rename_or_copy_from![1]}%)
@@ -38,10 +45,19 @@ function EntryRow(props: {
 }
 
 export const WorkingCopyView: Component<{
+  root: string;
   status: Resolved<WorkingCopyStatus>;
   onStage: (paths: string[]) => void;
   onUnstage: (paths: string[]) => void;
+  onHunksChanged: () => void;
 }> = (props) => {
+  const [selection, setSelection] = createSignal<Selection>(null);
+  function toggle(path: string, staged: boolean) {
+    const current = selection();
+    if (current && current.path === path && current.staged === staged) setSelection(null);
+    else setSelection({ path, staged });
+  }
+
   const known = createMemo(() => (isKnown(props.status) ? props.status.value : null));
   const reason = createMemo(() => unknownReason(props.status));
 
@@ -50,10 +66,7 @@ export const WorkingCopyView: Component<{
   const untracked = createMemo(() => known()?.untracked ?? []);
   const conflicted = createMemo(() => known()?.conflicted ?? []);
 
-  const allUnstagedPaths = createMemo(() => [
-    ...unstaged().flatMap(entryPathset),
-    ...untracked(),
-  ]);
+  const allUnstagedPaths = createMemo(() => [...unstaged().flatMap(entryPathset), ...untracked()]);
   const allStagedPaths = createMemo(() => staged().flatMap(entryPathset));
 
   return (
@@ -83,12 +96,19 @@ export const WorkingCopyView: Component<{
           </div>
           <For each={staged()}>
             {(e) => (
-              <EntryRow
-                entry={e}
-                code={changeCodeLabel(e.staged)}
-                actionLabel="Unstage"
-                onAction={props.onUnstage}
-              />
+              <>
+                <EntryRow
+                  entry={e}
+                  code={changeCodeLabel(e.staged)}
+                  actionLabel="Unstage"
+                  onAction={props.onUnstage}
+                  onTogglePath={() => toggle(e.path, true)}
+                  expanded={selection()?.path === e.path && selection()?.staged === true}
+                />
+                <Show when={selection()?.path === e.path && selection()?.staged === true}>
+                  <HunkDiffView root={props.root} path={e.path} staged={true} onChanged={props.onHunksChanged} />
+                </Show>
+              </>
             )}
           </For>
         </section>
@@ -103,7 +123,19 @@ export const WorkingCopyView: Component<{
           </div>
           <For each={unstaged()}>
             {(e) => (
-              <EntryRow entry={e} code={changeCodeLabel(e.unstaged)} actionLabel="Stage" onAction={props.onStage} />
+              <>
+                <EntryRow
+                  entry={e}
+                  code={changeCodeLabel(e.unstaged)}
+                  actionLabel="Stage"
+                  onAction={props.onStage}
+                  onTogglePath={() => toggle(e.path, false)}
+                  expanded={selection()?.path === e.path && selection()?.staged === false}
+                />
+                <Show when={selection()?.path === e.path && selection()?.staged === false}>
+                  <HunkDiffView root={props.root} path={e.path} staged={false} onChanged={props.onHunksChanged} />
+                </Show>
+              </>
             )}
           </For>
         </section>

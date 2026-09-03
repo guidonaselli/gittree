@@ -52,6 +52,7 @@ pub enum GitError {
 pub struct GitCall {
     pub repo_root: PathBuf,
     pub args: Vec<String>,
+    pub stdin: Option<Vec<u8>>,
 }
 
 impl GitCall {
@@ -62,6 +63,12 @@ impl GitCall {
         Self {
             repo_root: repo_root.into(),
             args: args.into_iter().map(Into::into).collect(),
+            stdin: None,
         }
+    }
+
+    pub fn with_stdin(mut self, input: impl Into<Vec<u8>>) -> Self {
+        self.stdin = Some(input.into());
+        self
     }
 }

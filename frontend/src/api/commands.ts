@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   Bookmark,
   DesktopPalette,
+  FileDiff,
   LogEntry,
   OpenRepositoryResult,
   RepositoryState,
@@ -40,6 +41,18 @@ export function stageWorkingCopyPaths(root: string, paths: string[]): Promise<vo
 
 export function unstageWorkingCopyPaths(root: string, paths: string[]): Promise<void> {
   return invoke<void>("unstage_working_copy_paths", { root, paths });
+}
+
+export function getFileDiff(root: string, path: string, staged: boolean): Promise<FileDiff | null> {
+  return invoke<FileDiff | null>("get_file_diff", { root, path, staged });
+}
+
+export function stageFileHunks(root: string, path: string, hunkIndices: number[]): Promise<void> {
+  return invoke<void>("stage_file_hunks", { root, path, hunkIndices });
+}
+
+export function unstageFileHunks(root: string, path: string, hunkIndices: number[]): Promise<void> {
+  return invoke<void>("unstage_file_hunks", { root, path, hunkIndices });
 }
 
 export function getSettings(): Promise<SettingsLoadResult> {

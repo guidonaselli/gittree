@@ -9,8 +9,9 @@ use std::time::Duration;
 use desktop_theme::DesktopPalette;
 use git_process::{check_git_version, ProcessLayer};
 use repo_state::{
-    query_repository_state, query_submodule_matrix, query_working_copy_status, stage_paths,
-    unstage_paths, OpenOutcome, RepositoryState, Resolved, SubmoduleState, WorkingCopyStatus,
+    diff_file, query_repository_state, query_submodule_matrix, query_working_copy_status,
+    stage_hunks, stage_paths, unstage_hunks, unstage_paths, FileDiff, OpenOutcome,
+    RepositoryState, Resolved, SubmoduleState, WorkingCopyStatus,
 };
 use serde::Serialize;
 use settings::{Bookmark, BookmarksState, Settings, SettingsLoadResult};
@@ -83,6 +84,48 @@ async fn unstage_working_copy_paths(
 ) -> Result<(), String> {
     let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
     unstage_paths(&state.process_layer, &PathBuf::from(root), &paths).await
+}
+
+#[tauri::command]
+async fn get_file_diff(
+    state: State<'_, AppState>,
+    root: String,
+    path: String,
+    staged: bool,
+) -> Result<Option<FileDiff>, String> {
+    diff_file(&state.process_layer, &PathBuf::from(root), &path, staged).await
+}
+
+#[tauri::command]
+async fn stage_file_hunks(
+    state: State<'_, AppState>,
+    root: String,
+    path: String,
+    hunk_indices: Vec<usize>,
+) -> Result<(), String> {
+    stage_hunks(
+        &state.process_layer,
+        &PathBuf::from(root),
+        &path,
+        &hunk_indices,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn unstage_file_hunks(
+    state: State<'_, AppState>,
+    root: String,
+    path: String,
+    hunk_indices: Vec<usize>,
+) -> Result<(), String> {
+    unstage_hunks(
+        &state.process_layer,
+        &PathBuf::from(root),
+        &path,
+        &hunk_indices,
+    )
+    .await
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -207,6 +250,9 @@ pub fn run() {
             get_working_copy_status,
             stage_working_copy_paths,
             unstage_working_copy_paths,
+            get_file_diff,
+            stage_file_hunks,
+            unstage_file_hunks,
             resolve_repository_root,
             get_settings,
             save_settings,

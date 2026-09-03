@@ -391,7 +391,15 @@ export const App: Component = () => {
           <Show when={workspace.activeGroup()} fallback={<p class="text-muted">Open a repository to begin.</p>}>
             <Show when={repoState()}>{(state) => <RepositoryStatus state={state()} />}</Show>
             <Show when={workingCopy()}>
-              {(status) => <WorkingCopyView status={status()} onStage={stagePaths} onUnstage={unstagePaths} />}
+              {(status) => (
+                <WorkingCopyView
+                  root={activeViewPath()!}
+                  status={status()}
+                  onStage={stagePaths}
+                  onUnstage={unstagePaths}
+                  onHunksChanged={() => invalidate(activeViewPath()!)}
+                />
+              )}
             </Show>
             <Show when={submodules() && submodules()!.length > 0}>
               <SubmoduleMatrix submodules={submodules()!} onDrillIn={drillIntoSubmodule} />
