@@ -8,7 +8,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Runtime};
 
 const DEBOUNCE_WINDOW: Duration = Duration::from_millis(400);
 const POLL_INTERVAL: Duration = Duration::from_secs(3);
@@ -26,7 +26,7 @@ pub struct WatcherState(pub Mutex<HashMap<PathBuf, WatchHandle>>);
 
 /// Starts watching `root`. Idempotent per root: calling it again for the
 /// same repository replaces the previous watch rather than stacking one.
-pub fn start_watching(app: AppHandle, state: &WatcherState, root: PathBuf) {
+pub fn start_watching<R: Runtime>(app: AppHandle<R>, state: &WatcherState, root: PathBuf) {
     stop_watching(state, &root);
 
     let emit_root = root.clone();
@@ -83,7 +83,7 @@ pub fn stop_watching(state: &WatcherState, root: &Path) {
     // WatchHandle::Native drops the debouncer here too, which stops the watch.
 }
 
-fn spawn_poller(app: AppHandle, root: PathBuf) -> WatchHandle {
+fn spawn_poller<R: Runtime>(app: AppHandle<R>, root: PathBuf) -> WatchHandle {
     let task = tokio::spawn(async move {
         let git_dir = root.join(".git");
         let mut last_signature = directory_signature(&git_dir);
@@ -108,4 +108,62 @@ fn directory_signature(git_dir: &Path) -> Option<std::time::SystemTime> {
         .ok()
         .and_then(|m| m.modified().ok());
     head.max(index)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc;
+    use tauri::Listener;
+
+    fn init_repo(dir: &Path) {
+        let run = |args: &[&str]| {
+            let status = std::process::Command::new("git")
+                .args(args)
+                .current_dir(dir)
+                .status()
+                .unwrap();
+            assert!(status.success());
+        };
+        run(&["init", "-q", "-b", "main"]);
+        run(&["config", "user.email", "test@example.com"]);
+        run(&["config", "user.name", "Test"]);
+        std::fs::write(dir.join("f.txt"), "hello").unwrap();
+        run(&["add", "."]);
+        run(&["commit", "-q", "-m", "init"]);
+    }
+
+    #[test]
+    fn external_commit_triggers_a_repo_changed_event() {
+        let dir = tempfile::tempdir().unwrap();
+        init_repo(dir.path());
+
+        let app = tauri::test::mock_app();
+        let handle = app.handle().clone();
+        let watcher_state = WatcherState::default();
+
+        let (tx, rx) = mpsc::channel::<String>();
+        handle.listen_any("repo:changed", move |event| {
+            let root: String = serde_json::from_str(event.payload()).unwrap();
+            let _ = tx.send(root);
+        });
+
+        start_watching(handle.clone(), &watcher_state, dir.path().to_path_buf());
+
+        // A commit made outside the app, exactly the scenario the watcher exists for.
+        std::fs::write(dir.path().join("f.txt"), "changed").unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-aqm", "external change"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+
+        let received = rx.recv_timeout(Duration::from_secs(3));
+        assert!(
+            received.is_ok(),
+            "expected a repo:changed event after an external commit"
+        );
+
+        stop_watching(&watcher_state, dir.path());
+    }
 }
