@@ -2,6 +2,7 @@ import { type Component, For, Show, createEffect, createResource, createSignal, 
 import {
   addBookmark,
   getBookmarks,
+  getOperationLog,
   getRepositoryState,
   getSettings,
   getSubmoduleMatrix,
@@ -13,6 +14,7 @@ import {
 } from "./api/commands";
 import { onRepositoryChanged, onWatchDegraded } from "./api/events";
 import type { Bookmark } from "./api/types";
+import { OperationLogView } from "./features/operation-log/OperationLogView";
 import { RepositoryStatus } from "./features/repository/RepositoryStatus";
 import { SubmoduleMatrix } from "./features/submodules/SubmoduleMatrix";
 import {
@@ -25,6 +27,7 @@ import { Resizer } from "./layout/Resizer";
 import "./layout/layout.css";
 import "./features/repository/repository.css";
 import "./features/submodules/submodule-matrix.css";
+import "./features/operation-log/operation-log.css";
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
@@ -56,6 +59,7 @@ export const App: Component = () => {
   const [settingsResult] = createResource(getSettings);
   const [repoState, { refetch: refetchRepoState }] = createResource(activeRoot, (root) => getRepositoryState(root));
   const [submodules, { refetch: refetchSubmodules }] = createResource(activeRoot, (root) => getSubmoduleMatrix(root));
+  const [operationLog, { refetch: refetchOperationLog }] = createResource(activeRoot, () => getOperationLog());
 
   // Explicit theme override wins over the system preference default.
   createEffect(() => {
@@ -84,6 +88,7 @@ export const App: Component = () => {
     if (root === activeRoot()) {
       refetchRepoState();
       refetchSubmodules();
+      refetchOperationLog();
     }
   }).then((un) => (unlistenChanged = un));
   onWatchDegraded((info) => {
@@ -122,6 +127,7 @@ export const App: Component = () => {
   function refreshAll() {
     refetchRepoState();
     refetchSubmodules();
+    refetchOperationLog();
   }
 
   return (
@@ -232,9 +238,7 @@ export const App: Component = () => {
         <Show when={!detailCollapsed() && activeRoot()}>
           <Resizer label="Resize detail panel" onResize={(d) => setDetailWidth(clamp(detailWidth() - d, 240, 640))} />
           <aside class="pane-detail" style={{ width: `${clamp(detailWidth(), 240, 640)}px` }} aria-label="Detail panel">
-            <p class="text-muted" style={{ padding: "var(--space-3)" }}>
-              Commit detail, diff and blame will appear here.
-            </p>
+            <OperationLogView entries={operationLog() ?? []} />
           </aside>
         </Show>
       </div>

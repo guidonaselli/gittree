@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Bookmark, RepositoryState, Settings, SettingsLoadResult, SubmoduleState } from "./types";
+import type { Bookmark, LogEntry, RepositoryState, Settings, SettingsLoadResult, SubmoduleState } from "./types";
 
 // Thin wrapper over the Tauri commands.
 
@@ -41,4 +41,8 @@ export function startWatching(root: string): Promise<void> {
 
 export function stopWatching(root: string): Promise<void> {
   return invoke<void>("stop_watching", { root });
+}
+
+export function getOperationLog(): Promise<LogEntry[]> {
+  return invoke<LogEntry[]>("get_operation_log");
 }

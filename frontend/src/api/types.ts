@@ -8,6 +8,15 @@ export type Bookmark = { root: string; group: string | null; order: number };
 export type Settings = { concurrency: number; theme: string | null };
 export type SettingsLoadResult = { settings: Settings; warnings: string[] };
 
+export type LogEntry = {
+  repo_root: string;
+  args: string[];
+  exit_status: number;
+  duration_ms: number;
+  timestamp_unix_ms: number;
+  write: boolean;
+};
+
 export type Resolved<T> = { state: "Known"; value: T } | { state: "Unknown"; value: { reason: string } };
 
 export function isKnown<T>(r: Resolved<T>): r is { state: "Known"; value: T } {

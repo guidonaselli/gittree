@@ -347,4 +347,38 @@ mod tests {
         let counts = parse_porcelain_v2(raw);
         assert_eq!(counts.conflicted, 1);
     }
+
+    #[tokio::test]
+    async fn filename_with_a_space_counts_correctly() {
+        let dir = init_repo();
+        std::fs::write(dir.path().join("has space.txt"), "x").unwrap();
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+        let state = query_repository_state(&layer, dir.path(), &dir.path().join(".git")).await;
+        assert_eq!(state.paths.as_known().unwrap().untracked, 1);
+    }
+
+    #[test]
+    fn filename_with_an_embedded_newline_counts_correctly() {
+        // `-z` disables path quoting: an embedded newline is a literal byte
+        // in the field, so only the NUL terminator ends the record.
+        let mut raw = b"? has\nnewline.txt".to_vec();
+        raw.push(0);
+        let counts = parse_porcelain_v2(&raw);
+        assert_eq!(counts.untracked, 1);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn non_utf8_filename_counts_correctly_without_crashing() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let dir = init_repo();
+        let bytes = [b'b', b'a', 0xFFu8, b'd', b'.', b't', b'x', b't'];
+        let name = std::ffi::OsStr::from_bytes(&bytes);
+        std::fs::write(dir.path().join(name), "x").unwrap();
+
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+        let state = query_repository_state(&layer, dir.path(), &dir.path().join(".git")).await;
+        assert_eq!(state.paths.as_known().unwrap().untracked, 1);
+    }
 }

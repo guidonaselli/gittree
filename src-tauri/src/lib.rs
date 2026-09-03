@@ -51,10 +51,13 @@ async fn get_submodule_matrix(
 }
 
 #[tauri::command]
-async fn resolve_repository_root(path: String) -> Result<String, String> {
+async fn resolve_repository_root(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<String, String> {
     let call = git_process::GitCall::new(&path, ["rev-parse", "--show-toplevel"]);
-    let layer = ProcessLayer::new(1, Duration::from_secs(10));
-    let result = layer
+    let result = state
+        .process_layer
         .run(
             call,
             git_process::Intent::Read,
@@ -69,6 +72,11 @@ async fn resolve_repository_root(path: String) -> Result<String, String> {
         ));
     }
     Ok(result.stdout_utf8_lossy().trim().to_string())
+}
+
+#[tauri::command]
+fn get_operation_log(state: State<'_, AppState>) -> Vec<git_process::LogEntry> {
+    state.process_layer.log.snapshot()
 }
 
 #[tauri::command]
@@ -151,6 +159,7 @@ pub fn run() {
             remove_bookmark,
             start_watching,
             stop_watching,
+            get_operation_log,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
