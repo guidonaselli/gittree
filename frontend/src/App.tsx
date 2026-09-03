@@ -12,8 +12,10 @@ import {
   removeBookmark,
   resolveRepositoryRoot,
   saveSettings,
+  stageWorkingCopyPaths,
   startWatching,
   stopWatching,
+  unstageWorkingCopyPaths,
 } from "./api/commands";
 import { onDesktopThemeChanged, onRepositoryChanged, onWatchDegraded } from "./api/events";
 import type { Bookmark, RepositoryState, Resolved, SubmoduleState, WorkingCopyStatus } from "./api/types";
@@ -116,6 +118,20 @@ export const App: Component = () => {
       refetchSubmodules();
       refetchWorkingCopy();
     }
+  }
+
+  async function stagePaths(paths: string[]) {
+    const root = activeViewPath();
+    if (!root || paths.length === 0) return;
+    await stageWorkingCopyPaths(root, paths);
+    invalidate(root);
+  }
+
+  async function unstagePaths(paths: string[]) {
+    const root = activeViewPath();
+    if (!root || paths.length === 0) return;
+    await unstageWorkingCopyPaths(root, paths);
+    invalidate(root);
   }
 
   // Focus the primary action whenever no group is open.
@@ -374,7 +390,9 @@ export const App: Component = () => {
 
           <Show when={workspace.activeGroup()} fallback={<p class="text-muted">Open a repository to begin.</p>}>
             <Show when={repoState()}>{(state) => <RepositoryStatus state={state()} />}</Show>
-            <Show when={workingCopy()}>{(status) => <WorkingCopyView status={status()} />}</Show>
+            <Show when={workingCopy()}>
+              {(status) => <WorkingCopyView status={status()} onStage={stagePaths} onUnstage={unstagePaths} />}
+            </Show>
             <Show when={submodules() && submodules()!.length > 0}>
               <SubmoduleMatrix submodules={submodules()!} onDrillIn={drillIntoSubmodule} />
             </Show>

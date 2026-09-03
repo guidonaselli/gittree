@@ -15,6 +15,27 @@
   margin: 0 0 var(--space-2) 0;
 }
 
+.working-copy-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.working-copy-action {
+  font-size: var(--font-size-xs);
+  background: transparent;
+  border: var(--border-width-thin) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.working-copy-action:hover {
+  background: var(--color-bg-subtle);
+}
+
 .working-copy-entry {
   display: flex;
   align-items: center;

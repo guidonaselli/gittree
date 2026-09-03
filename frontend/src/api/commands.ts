@@ -34,6 +34,14 @@ export function getWorkingCopyStatus(root: string): Promise<Resolved<WorkingCopy
   return invoke<Resolved<WorkingCopyStatus>>("get_working_copy_status", { root });
 }
 
+export function stageWorkingCopyPaths(root: string, paths: string[]): Promise<void> {
+  return invoke<void>("stage_working_copy_paths", { root, paths });
+}
+
+export function unstageWorkingCopyPaths(root: string, paths: string[]): Promise<void> {
+  return invoke<void>("unstage_working_copy_paths", { root, paths });
+}
+
 export function getSettings(): Promise<SettingsLoadResult> {
   return invoke<SettingsLoadResult>("get_settings");
 }

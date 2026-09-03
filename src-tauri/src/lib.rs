@@ -9,8 +9,8 @@ use std::time::Duration;
 use desktop_theme::DesktopPalette;
 use git_process::{check_git_version, ProcessLayer};
 use repo_state::{
-    query_repository_state, query_submodule_matrix, query_working_copy_status, OpenOutcome,
-    RepositoryState, Resolved, SubmoduleState, WorkingCopyStatus,
+    query_repository_state, query_submodule_matrix, query_working_copy_status, stage_paths,
+    unstage_paths, OpenOutcome, RepositoryState, Resolved, SubmoduleState, WorkingCopyStatus,
 };
 use serde::Serialize;
 use settings::{Bookmark, BookmarksState, Settings, SettingsLoadResult};
@@ -63,6 +63,26 @@ async fn get_working_copy_status(
 ) -> Result<Resolved<WorkingCopyStatus>, String> {
     let root = PathBuf::from(root);
     Ok(query_working_copy_status(&state.process_layer, &root).await)
+}
+
+#[tauri::command]
+async fn stage_working_copy_paths(
+    state: State<'_, AppState>,
+    root: String,
+    paths: Vec<String>,
+) -> Result<(), String> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    stage_paths(&state.process_layer, &PathBuf::from(root), &paths).await
+}
+
+#[tauri::command]
+async fn unstage_working_copy_paths(
+    state: State<'_, AppState>,
+    root: String,
+    paths: Vec<String>,
+) -> Result<(), String> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    unstage_paths(&state.process_layer, &PathBuf::from(root), &paths).await
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -185,6 +205,8 @@ pub fn run() {
             get_repository_state,
             get_submodule_matrix,
             get_working_copy_status,
+            stage_working_copy_paths,
+            unstage_working_copy_paths,
             resolve_repository_root,
             get_settings,
             save_settings,
