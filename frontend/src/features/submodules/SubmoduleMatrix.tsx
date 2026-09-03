@@ -39,7 +39,9 @@ function lastFetchLabel(s: SubmoduleState): string {
   return `${Math.floor(months / 12)}y ago`;
 }
 
-export const SubmoduleMatrix: Component<{ submodules: SubmoduleState[] }> = (props) => {
+export const SubmoduleMatrix: Component<{ submodules: SubmoduleState[]; onDrillIn: (path: string, name: string) => void }> = (
+  props,
+) => {
   const [filter, setFilter] = createSignal<StateFilter>("all");
   const [sortKey, setSortKey] = createSignal<SortKey>("name");
   const [selected, setSelected] = createSignal<Set<string>>(new Set());
@@ -129,7 +131,11 @@ export const SubmoduleMatrix: Component<{ submodules: SubmoduleState[] }> = (pro
             aria-label={`Select ${s.name}`}
           />
         </td>
-        <td class="col-name">{s.name}</td>
+        <td class="col-name">
+          <button class="collapse-toggle" onClick={() => props.onDrillIn(s.path, s.name)} disabled={!s.initialized}>
+            {s.name}
+          </button>
+        </td>
         <td>
           {branchLabel(s.branch)}
           <Show when={isDetached(s)}>
