@@ -1,5 +1,4 @@
-//! The repository and submodule state model. Every UI surface reads from
-//! records built here; no UI surface queries `git` directly (design D3).
+//! The repository and submodule state model.
 
 mod resolved;
 mod status;

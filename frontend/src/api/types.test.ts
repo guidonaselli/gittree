@@ -50,7 +50,7 @@ describe("upstreamBasisLabel", () => {
     expect(inferred).toBe(false);
   });
 
-  it("labels a same-named remote branch fallback as inferred (design D4)", () => {
+  it("labels a same-named remote branch fallback as inferred", () => {
     const { label, inferred } = upstreamBasisLabel({ Inferred: { refname: "origin/test" } });
     expect(label).toBe("origin/test");
     expect(inferred).toBe(true);

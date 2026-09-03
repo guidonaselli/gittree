@@ -13,19 +13,13 @@ use crate::log::OperationLog;
 use crate::{GitCall, GitError, GitResult};
 
 /// Whether a call is a background/automatic read, or an explicit user write.
-/// Spec (platform-and-packaging, "no repository mutation without intent"):
-/// no automatic path may execute a writing command. `Intent::Write` is only
-/// ever constructed at the point a user action is dispatched.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Intent {
     Read,
     Write,
 }
 
-/// The first-word git subcommand allowlist for `Intent::Read`. Anything not
-/// on this list run under `Intent::Read` is refused — see `NotAllowlisted`.
-/// This is intentionally a fixed, small, auditable list rather than a
-/// denylist: new read-only subcommands must be added deliberately.
+/// Git subcommands allowed under `Intent::Read`; anything else is refused.
 const READ_ALLOWLIST: &[&str] = &[
     "status",
     "log",
@@ -56,14 +50,9 @@ const READ_ALLOWLIST: &[&str] = &[
     "var",
     "version",
 ];
-// `fetch` is deliberately absent: it writes remote-tracking refs and objects,
-// so it always requires `Intent::Write`, which only an explicit user action
-// constructs. A background watcher can never fetch.
+// `fetch` is deliberately absent: it writes, so it always requires `Intent::Write`.
 
-/// Global flags that take a separate value argument (e.g. `-C /path`),
-/// which must be skipped along with the flag itself when hunting for the
-/// subcommand token — otherwise `-C /tmp log` misreads `/tmp` as the
-/// subcommand.
+/// Global flags that take a separate value argument, skipped when hunting for the subcommand token.
 const GLOBAL_FLAGS_WITH_VALUE: &[&str] = &["-C", "-c", "--git-dir", "--work-tree", "--namespace"];
 
 fn is_allowlisted(args: &[String]) -> bool {

@@ -1,10 +1,7 @@
 /*
  * Design tokens — the only place a color, spacing, radius, border, shadow,
- * font or duration value may be a literal (spec: ui-shell-and-theming,
- * "Design-token architecture"). `scripts/lint-tokens.mjs` enforces that no
- * other file in `src/` contains one. A built-in theme is a value of these
- * custom properties, nothing else — see the dark block below and
- * `theme/user-theme.ts` for user themes loaded at runtime.
+ * font or duration value may be a literal. `scripts/lint-tokens.mjs`
+ * enforces that no other file in `src/` contains one.
  */
 
 :root {
@@ -102,11 +99,7 @@
   --resizer-hit-width: 6px;
 }
 
-/* Follows the desktop's light/dark preference by default (spec:
-   ui-shell-and-theming, "Desktop theme adoption"). An explicit in-app
-   choice sets [data-theme] on the root and wins over this block — see the
-   [data-theme="dark"] block below, which is defined after this one so the
-   cascade favors the explicit choice regardless of source order changes. */
+/* An explicit [data-theme] choice (set below) wins over this default. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;

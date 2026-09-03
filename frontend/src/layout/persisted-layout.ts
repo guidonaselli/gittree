@@ -1,15 +1,7 @@
 import { createSignal, type Accessor, type Setter } from "solid-js";
 
-/**
- * Per-viewer layout state (pane sizes, collapse state, active view) kept in
- * the webview's own localStorage. This is intentionally separate from the
- * cross-repository application settings file (task 1.14, XDG config,
- * Rust-owned) — layout is UI-shell state, not a Git or repository setting,
- * and reading/writing it must never touch the process layer.
- *
- * Spec: ui-shell-and-theming, "Application layout" — "layout, pane sizes and
- * per-repository active view MUST persist across restarts."
- */
+// Layout state (pane sizes, collapse state) persisted in the webview's own
+// localStorage, separate from the Rust-owned settings file.
 function persistedSignal<T>(key: string, initial: T): [Accessor<T>, Setter<T>] {
   let stored: T = initial;
   try {

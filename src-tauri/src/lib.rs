@@ -1,21 +1,24 @@
+mod settings;
+mod watcher;
+
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 use git_process::{check_git_version, ProcessLayer};
 use repo_state::{query_repository_state, query_submodule_matrix, RepositoryState, SubmoduleState};
-use tauri::State;
+use settings::{Bookmark, BookmarksState, Settings, SettingsLoadResult};
+use tauri::{AppHandle, Manager, State};
+use watcher::WatcherState;
 
-const DEFAULT_CONCURRENCY: usize = 8;
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub struct AppState {
     pub process_layer: Arc<ProcessLayer>,
 }
 
-/// T-002 / task 1.2: verify the `git` version floor before the app is
-/// allowed to start at all. This runs before the Tauri builder so a failure
-/// never produces a half-initialized window.
+/// Runs before the Tauri builder so a failed version check never produces
+/// a half-initialized window.
 fn doctor_or_exit() {
     match check_git_version() {
         Ok(version) => {
@@ -68,20 +71,99 @@ async fn resolve_repository_root(path: String) -> Result<String, String> {
     Ok(result.stdout_utf8_lossy().trim().to_string())
 }
 
+#[tauri::command]
+fn get_settings() -> SettingsLoadResult {
+    settings::load_settings()
+}
+
+#[tauri::command]
+fn save_settings(settings: Settings) -> Result<(), String> {
+    settings::save_settings(&settings).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_bookmarks(state: State<'_, BookmarksState>) -> Vec<Bookmark> {
+    state.0.lock().expect("bookmarks mutex poisoned").clone()
+}
+
+#[tauri::command]
+fn add_bookmark(
+    state: State<'_, BookmarksState>,
+    root: String,
+    group: Option<String>,
+) -> Result<Vec<Bookmark>, String> {
+    let mut bookmarks = state.0.lock().expect("bookmarks mutex poisoned");
+    if !bookmarks.iter().any(|b| b.root == root) {
+        let order = bookmarks.len() as i32;
+        bookmarks.push(Bookmark { root, group, order });
+        settings::save_bookmarks(&bookmarks).map_err(|e| e.to_string())?;
+    }
+    Ok(bookmarks.clone())
+}
+
+#[tauri::command]
+fn remove_bookmark(
+    state: State<'_, BookmarksState>,
+    root: String,
+) -> Result<Vec<Bookmark>, String> {
+    let mut bookmarks = state.0.lock().expect("bookmarks mutex poisoned");
+    bookmarks.retain(|b| b.root != root);
+    settings::save_bookmarks(&bookmarks).map_err(|e| e.to_string())?;
+    Ok(bookmarks.clone())
+}
+
+#[tauri::command]
+fn start_watching(app: AppHandle, watcher_state: State<'_, WatcherState>, root: String) {
+    watcher::start_watching(app, &watcher_state, PathBuf::from(root));
+}
+
+#[tauri::command]
+fn stop_watching(watcher_state: State<'_, WatcherState>, root: String) {
+    watcher::stop_watching(&watcher_state, &PathBuf::from(root));
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt::init();
     doctor_or_exit();
 
-    let process_layer = Arc::new(ProcessLayer::new(DEFAULT_CONCURRENCY, DEFAULT_TIMEOUT));
+    let initial_settings = settings::load_settings();
+    for warning in &initial_settings.warnings {
+        tracing::warn!(%warning, "settings.json: falling back for one key");
+    }
+    let process_layer = Arc::new(ProcessLayer::new(
+        initial_settings.settings.concurrency,
+        DEFAULT_TIMEOUT,
+    ));
 
     tauri::Builder::default()
         .manage(AppState { process_layer })
+        .manage(BookmarksState::default())
+        .manage(WatcherState::default())
         .invoke_handler(tauri::generate_handler![
             get_repository_state,
             get_submodule_matrix,
             resolve_repository_root,
+            get_settings,
+            save_settings,
+            get_bookmarks,
+            add_bookmark,
+            remove_bookmark,
+            start_watching,
+            stop_watching,
         ])
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                // Stop every watch rather than leaking on window close.
+                let state = window.state::<WatcherState>();
+                let mut watches = state.0.lock().expect("watcher state mutex poisoned");
+                for (_, handle) in watches.drain() {
+                    if let watcher::WatchHandle::Polling(task) = handle {
+                        task.abort();
+                    }
+                }
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running gittree");
 }

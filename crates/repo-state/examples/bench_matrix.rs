@@ -1,5 +1,4 @@
-//! Manual verification against a real repository path, not part of the
-//! automated suite (which uses generated fixtures per design D8). Run with:
+//! Manual verification against a real repository path. Run with:
 //! `cargo run -p repo-state --example bench_matrix -- <path>`
 use git_process::ProcessLayer;
 use repo_state::query_submodule_matrix;

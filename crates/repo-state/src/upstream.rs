@@ -1,13 +1,8 @@
 use git_process::{GitCall, GitError, Intent, ProcessLayer};
 use tokio_util::sync::CancellationToken;
 
-/// The basis used to compute remote divergence, and whether it was
-/// configured (`@{u}`) or inferred (`<remote>/<branch>`). Design D4: measured
-/// on the reference superproject, `@{u}` is unset on most submodules while
-/// `origin/<branch>` exists for all sampled — so a tool that only reads
-/// `@{u}` reports "unknown" for the majority of rows. The basis actually used
-/// MUST be visible to the caller, never presented as configured when it was
-/// inferred.
+/// The basis used to compute remote divergence: a configured `@{u}`, an
+/// inferred `<remote>/<branch>`, or none.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub enum UpstreamBasis {
     Configured { refname: String },
@@ -26,7 +21,7 @@ impl UpstreamBasis {
     }
 }
 
-/// `@{u}` -> `<default-remote>/<branch>` -> `None`. See design D4.
+/// `@{u}` -> `<default-remote>/<branch>` -> `None`.
 pub async fn resolve_upstream_basis(
     layer: &ProcessLayer,
     repo_root: &std::path::Path,

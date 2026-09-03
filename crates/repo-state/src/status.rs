@@ -70,9 +70,8 @@ fn detect_in_progress(git_dir: &Path) -> InProgressOperation {
     }
 }
 
-/// Parses `git status --porcelain=v2 -z` byte-exactly. NUL-delimited so
-/// paths with newlines or spaces are never ambiguous (spec:
-/// working-copy-and-commits, "byte-exact... newlines and non-UTF-8 bytes").
+/// Parses `git status --porcelain=v2 -z`. NUL-delimited so paths with
+/// newlines or spaces are never ambiguous.
 fn parse_porcelain_v2(raw: &[u8]) -> PathCounts {
     let mut counts = PathCounts {
         staged: 0,

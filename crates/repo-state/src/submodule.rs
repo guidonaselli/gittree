@@ -9,9 +9,7 @@ use crate::status::Branch;
 use crate::upstream::{resolve_upstream_basis, UpstreamBasis};
 
 /// Divergence between a submodule's checked-out HEAD and the commit the
-/// superproject records for it (the gitlink). Spec: submodule-workspace,
-/// "Gitlink divergence" — in-sync and zero divergence are not the same
-/// state as "we could not compute it".
+/// superproject records for it (the gitlink).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub enum GitlinkDivergence {
     InSync,
@@ -43,8 +41,7 @@ struct DeclaredSubmodule {
     url: Option<String>,
 }
 
-/// One call reading `.gitmodules` as the declaration of record (design D3:
-/// "two superproject-level calls fan out into per-submodule calls").
+/// One call reading `.gitmodules` as the declaration of record.
 async fn read_gitmodules(layer: &ProcessLayer, superproject_root: &Path) -> Vec<DeclaredSubmodule> {
     let result = layer
         .run(
@@ -100,7 +97,7 @@ async fn read_gitmodules(layer: &ProcessLayer, superproject_root: &Path) -> Vec<
         .collect()
 }
 
-/// One call reading every gitlink from the superproject's index (design D3).
+/// One call reading every gitlink from the superproject's index.
 async fn read_gitlinks(
     layer: &ProcessLayer,
     superproject_root: &Path,
@@ -327,8 +324,7 @@ async fn query_one_submodule(
 }
 
 /// Fans out from two superproject-level calls into concurrent per-submodule
-/// queries. Concurrency is bounded by the `ProcessLayer`'s own pool, so no
-/// separate limiter is needed here (design D5, D3).
+/// queries, bounded by the `ProcessLayer`'s own pool.
 pub async fn query_submodule_matrix(
     layer: &ProcessLayer,
     superproject_root: &Path,

@@ -1,6 +1,12 @@
-// Mirrors the serde_json shape of crates/repo-state's public types.
-// Kept hand-written and in one place so a Rust field rename is a compile
-// error here, not a silent `undefined` in the UI.
+// Mirrors the serde_json shape of crates/repo-state's public types, plus
+// src-tauri's settings/bookmarks types. Kept hand-written and in one place
+// so a Rust field rename is a compile error here, not a silent `undefined`
+// in the UI.
+
+export type Bookmark = { root: string; group: string | null; order: number };
+
+export type Settings = { concurrency: number; theme: string | null };
+export type SettingsLoadResult = { settings: Settings; warnings: string[] };
 
 export type Resolved<T> = { state: "Known"; value: T } | { state: "Unknown"; value: { reason: string } };
 

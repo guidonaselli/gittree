@@ -1,5 +1,18 @@
-import { type Component, For, Show, createResource, createSignal } from "solid-js";
-import { getRepositoryState, getSubmoduleMatrix, resolveRepositoryRoot } from "./api/commands";
+import { type Component, For, Show, createEffect, createResource, createSignal, onCleanup } from "solid-js";
+import {
+  addBookmark,
+  getBookmarks,
+  getRepositoryState,
+  getSettings,
+  getSubmoduleMatrix,
+  removeBookmark,
+  resolveRepositoryRoot,
+  saveSettings,
+  startWatching,
+  stopWatching,
+} from "./api/commands";
+import { onRepositoryChanged, onWatchDegraded } from "./api/events";
+import type { Bookmark } from "./api/types";
 import { RepositoryStatus } from "./features/repository/RepositoryStatus";
 import { SubmoduleMatrix } from "./features/submodules/SubmoduleMatrix";
 import {
@@ -17,24 +30,15 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
-const RECENT_KEY = "gittree.recentRoots";
-
-function readRecent(): string[] {
-  try {
-    const raw = localStorage.getItem(RECENT_KEY);
-    return raw ? (JSON.parse(raw) as string[]) : [];
-  } catch {
-    return [];
+function groupBookmarks(bookmarks: Bookmark[]): Map<string, Bookmark[]> {
+  const groups = new Map<string, Bookmark[]>();
+  const sorted = [...bookmarks].sort((a, b) => a.order - b.order);
+  for (const b of sorted) {
+    const key = b.group ?? "";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(b);
   }
-}
-
-function pushRecent(root: string) {
-  const next = [root, ...readRecent().filter((r) => r !== root)].slice(0, 10);
-  try {
-    localStorage.setItem(RECENT_KEY, JSON.stringify(next));
-  } catch {
-    // best-effort; bookmarks are a convenience, not a hard dependency
-  }
+  return groups;
 }
 
 export const App: Component = () => {
@@ -46,21 +50,73 @@ export const App: Component = () => {
   const [pathInput, setPathInput] = createSignal("");
   const [activeRoot, setActiveRoot] = createSignal<string | null>(null);
   const [openError, setOpenError] = createSignal<string | null>(null);
-  const [recent, setRecent] = createSignal<string[]>(readRecent());
+  const [watchDegradedReason, setWatchDegradedReason] = createSignal<string | null>(null);
 
+  const [bookmarks, { refetch: refetchBookmarks }] = createResource(getBookmarks);
+  const [settingsResult] = createResource(getSettings);
   const [repoState, { refetch: refetchRepoState }] = createResource(activeRoot, (root) => getRepositoryState(root));
   const [submodules, { refetch: refetchSubmodules }] = createResource(activeRoot, (root) => getSubmoduleMatrix(root));
 
+  // Explicit theme override wins over the system preference default.
+  createEffect(() => {
+    const theme = settingsResult()?.settings.theme;
+    if (theme === "light" || theme === "dark") {
+      document.documentElement.dataset.theme = theme;
+    } else {
+      delete document.documentElement.dataset.theme;
+    }
+  });
+
+  async function setTheme(theme: string) {
+    const current = settingsResult()?.settings ?? { concurrency: 8, theme: null };
+    const next = { ...current, theme: theme === "system" ? null : theme };
+    await saveSettings(next);
+    if (next.theme === "light" || next.theme === "dark") {
+      document.documentElement.dataset.theme = next.theme;
+    } else {
+      delete document.documentElement.dataset.theme;
+    }
+  }
+
+  let unlistenChanged: (() => void) | undefined;
+  let unlistenDegraded: (() => void) | undefined;
+  onRepositoryChanged((root) => {
+    if (root === activeRoot()) {
+      refetchRepoState();
+      refetchSubmodules();
+    }
+  }).then((un) => (unlistenChanged = un));
+  onWatchDegraded((info) => {
+    if (info.root === activeRoot()) setWatchDegradedReason(info.reason);
+  }).then((un) => (unlistenDegraded = un));
+  onCleanup(() => {
+    unlistenChanged?.();
+    unlistenDegraded?.();
+  });
+
   async function openPath(path: string) {
+    if (!path.trim()) return;
     setOpenError(null);
+    setWatchDegradedReason(null);
     try {
       const root = await resolveRepositoryRoot(path);
+      const previous = activeRoot();
+      if (previous && previous !== root) void stopWatching(previous);
       setActiveRoot(root);
-      pushRecent(root);
-      setRecent(readRecent());
+      void startWatching(root);
     } catch (e) {
       setOpenError(String(e));
     }
+  }
+
+  async function toggleBookmark(root: string) {
+    const isBookmarked = bookmarks()?.some((b) => b.root === root);
+    if (isBookmarked) {
+      await removeBookmark(root);
+    } else {
+      await addBookmark(root, null);
+    }
+    refetchBookmarks();
   }
 
   function refreshAll() {
@@ -77,6 +133,9 @@ export const App: Component = () => {
           <button class="collapse-toggle" onClick={refreshAll}>
             Refresh
           </button>
+          <button class="collapse-toggle" onClick={() => void toggleBookmark(activeRoot()!)}>
+            {bookmarks()?.some((b) => b.root === activeRoot()) ? "Remove bookmark" : "Add bookmark"}
+          </button>
           <button
             class="collapse-toggle"
             aria-expanded={!detailCollapsed()}
@@ -85,7 +144,22 @@ export const App: Component = () => {
             {detailCollapsed() ? "Show detail panel" : "Hide detail panel"}
           </button>
         </Show>
+        <label class="theme-select">
+          Theme:
+          <select
+            value={settingsResult()?.settings.theme ?? "system"}
+            onChange={(e) => void setTheme(e.currentTarget.value)}
+          >
+            <option value="system">System</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </label>
       </div>
+
+      <Show when={watchDegradedReason()}>
+        <div class="watch-degraded-banner">Filesystem watching degraded: {watchDegradedReason()}</div>
+      </Show>
 
       <div class="app-body">
         <Show when={!sidebarCollapsed()}>
@@ -111,17 +185,26 @@ export const App: Component = () => {
                 <div class="text-danger">{openError()}</div>
               </Show>
             </div>
-            <ul>
-              <For each={recent()}>
-                {(root) => (
-                  <li>
-                    <button class="collapse-toggle" onClick={() => void openPath(root)}>
-                      {root}
-                    </button>
-                  </li>
-                )}
-              </For>
-            </ul>
+            <For each={[...groupBookmarks(bookmarks() ?? []).entries()]}>
+              {([group, items]) => (
+                <div class="bookmark-group">
+                  <Show when={group}>
+                    <div class="bookmark-group-label">{group}</div>
+                  </Show>
+                  <ul>
+                    <For each={items}>
+                      {(b) => (
+                        <li>
+                          <button class="collapse-toggle bookmark-item" onClick={() => void openPath(b.root)}>
+                            {b.root}
+                          </button>
+                        </li>
+                      )}
+                    </For>
+                  </ul>
+                </div>
+              )}
+            </For>
           </nav>
           <Resizer label="Resize sidebar" onResize={(d) => setSidebarWidth(clamp(sidebarWidth() + d, 180, 480))} />
         </Show>
@@ -150,7 +233,7 @@ export const App: Component = () => {
           <Resizer label="Resize detail panel" onResize={(d) => setDetailWidth(clamp(detailWidth() - d, 240, 640))} />
           <aside class="pane-detail" style={{ width: `${clamp(detailWidth(), 240, 640)}px` }} aria-label="Detail panel">
             <p class="text-muted" style={{ padding: "var(--space-3)" }}>
-              Detail panel — commit detail, diff and blame land here (F-002/F-003).
+              Commit detail, diff and blame will appear here.
             </p>
           </aside>
         </Show>

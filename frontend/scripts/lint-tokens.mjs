@@ -1,12 +1,6 @@
 #!/usr/bin/env node
-// Fails the build on any literal color or raw spacing value in a component
-// (spec: ui-shell-and-theming, "Design-token architecture"; design D7,
-// risk R8). Applied from F-001 onward, not deferred to the theming
-// milestone, so no literal ever needs a costly retrofit.
-//
-// Scope: every .css/.tsx/.ts file under src/, EXCEPT theme/tokens.css
-// (the tokens themselves) and theme/*-theme.* (built-in/user theme sources,
-// which are also token-only files, just not this one).
+// Fails the build on any literal color or raw spacing value outside
+// theme/tokens.css.
 
 import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";

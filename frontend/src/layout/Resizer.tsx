@@ -6,11 +6,7 @@ type Props = {
   label: string;
 };
 
-/**
- * A draggable divider between two panes. Keyboard-operable per spec
- * (ui-shell-and-theming, "Keyboard operability"): focusable, and
- * ArrowLeft/ArrowRight resize in 16px steps without a pointer.
- */
+// A draggable divider between two panes; ArrowLeft/ArrowRight also resize.
 export const Resizer: Component<Props> = (props) => {
   let dragging = false;
   let startX = 0;

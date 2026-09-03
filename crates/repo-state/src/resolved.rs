@@ -1,7 +1,5 @@
-/// Every field of `RepositoryState` and `SubmoduleState` uses this instead of
-/// `Option<T>`. The whole point (spec: submodule-workspace, "no field may be
-/// silently absent") is that a caller cannot accidentally treat "we don't
-/// know" as "empty" or "zero" — `Resolved::Unknown` always carries the reason.
+/// A value that is either known, or explicitly unknown with a reason —
+/// never a silent blank.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(tag = "state", content = "value")]
 pub enum Resolved<T> {

@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Capabilities for the main GitTree window",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "core:event:default"]
 }
