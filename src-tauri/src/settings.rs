@@ -4,7 +4,7 @@
 //! rather than rejecting the whole file.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -50,9 +50,12 @@ pub struct SettingsLoadResult {
 /// Loads settings with per-key fallback: an invalid `concurrency` does not
 /// take `theme` down with it, and a missing file is not an error.
 pub fn load_settings() -> SettingsLoadResult {
-    let path = settings_path();
+    load_settings_from(&settings_path())
+}
+
+fn load_settings_from(path: &Path) -> SettingsLoadResult {
     let default = Settings::default();
-    let raw = match fs::read_to_string(&path) {
+    let raw = match fs::read_to_string(path) {
         Ok(text) => text,
         Err(_) => {
             return SettingsLoadResult {
@@ -100,9 +103,13 @@ pub fn load_settings() -> SettingsLoadResult {
 }
 
 pub fn save_settings(settings: &Settings) -> std::io::Result<()> {
-    fs::create_dir_all(config_dir())?;
+    save_settings_to(&settings_path(), settings)
+}
+
+fn save_settings_to(path: &Path, settings: &Settings) -> std::io::Result<()> {
+    fs::create_dir_all(path.parent().unwrap_or(Path::new(".")))?;
     let text = serde_json::to_string_pretty(settings).expect("Settings serializes");
-    fs::write(settings_path(), text)
+    fs::write(path, text)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -115,8 +122,11 @@ pub struct Bookmark {
 /// Missing file -> empty list. A malformed individual entry is skipped
 /// rather than invalidating the whole list.
 pub fn load_bookmarks() -> Vec<Bookmark> {
-    let path = bookmarks_path();
-    let Ok(raw) = fs::read_to_string(&path) else {
+    load_bookmarks_from(&bookmarks_path())
+}
+
+fn load_bookmarks_from(path: &Path) -> Vec<Bookmark> {
+    let Ok(raw) = fs::read_to_string(path) else {
         return Vec::new();
     };
     let Ok(entries) = serde_json::from_str::<Vec<serde_json::Value>>(&raw) else {
@@ -137,9 +147,13 @@ pub fn load_bookmarks() -> Vec<Bookmark> {
 }
 
 pub fn save_bookmarks(bookmarks: &[Bookmark]) -> std::io::Result<()> {
-    fs::create_dir_all(config_dir())?;
+    save_bookmarks_to(&bookmarks_path(), bookmarks)
+}
+
+fn save_bookmarks_to(path: &Path, bookmarks: &[Bookmark]) -> std::io::Result<()> {
+    fs::create_dir_all(path.parent().unwrap_or(Path::new(".")))?;
     let text = serde_json::to_string_pretty(bookmarks).expect("Vec<Bookmark> serializes");
-    fs::write(bookmarks_path(), text)
+    fs::write(path, text)
 }
 
 /// In-memory bookmark list, mirrored to `bookmarks.json` on every change.
@@ -157,45 +171,97 @@ mod tests {
 
     #[test]
     fn missing_concurrency_key_falls_back_alone() {
-        let value = serde_json::json!({ "theme": "dark" });
-        let raw = serde_json::to_string(&value).unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("settings.json"), raw).unwrap();
-        // load_settings() reads a fixed XDG path, so directly exercise the
-        // per-key merge logic it uses instead of the path.
-        let default = Settings::default();
-        let mut settings = default.clone();
-        let mut warnings = Vec::new();
-        match value.get("concurrency") {
-            None => {}
-            Some(v) => match v.as_u64() {
-                Some(n) => settings.concurrency = n as usize,
-                None => warnings.push("concurrency invalid".to_string()),
-            },
-        }
-        if let Some(serde_json::Value::String(s)) = value.get("theme") {
-            settings.theme = Some(s.clone());
-        }
-        assert_eq!(settings.concurrency, default.concurrency);
-        assert_eq!(settings.theme, Some("dark".to_string()));
-        assert!(warnings.is_empty());
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, r#"{"theme":"dark"}"#).unwrap();
+
+        let result = load_settings_from(&path);
+        assert_eq!(result.settings.concurrency, Settings::default().concurrency);
+        assert_eq!(result.settings.theme, Some("dark".to_string()));
+        assert!(result.warnings.is_empty());
+    }
+
+    #[test]
+    fn invalid_concurrency_falls_back_with_a_named_warning() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, r#"{"concurrency":-1,"theme":"light"}"#).unwrap();
+
+        let result = load_settings_from(&path);
+        assert_eq!(result.settings.concurrency, Settings::default().concurrency);
+        assert_eq!(result.settings.theme, Some("light".to_string()));
+        assert_eq!(result.warnings.len(), 1);
+        assert!(result.warnings[0].contains("concurrency"));
+    }
+
+    #[test]
+    fn missing_settings_file_uses_defaults_without_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = load_settings_from(&dir.path().join("does-not-exist.json"));
+        assert_eq!(result.settings.concurrency, Settings::default().concurrency);
+        assert!(result.warnings.is_empty());
+    }
+
+    #[test]
+    fn settings_round_trip_through_the_real_save_and_load_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nested/settings.json");
+        let settings = Settings {
+            concurrency: 4,
+            theme: Some("dark".to_string()),
+        };
+
+        save_settings_to(&path, &settings).unwrap();
+        let loaded = load_settings_from(&path);
+
+        assert_eq!(loaded.settings.concurrency, 4);
+        assert_eq!(loaded.settings.theme, Some("dark".to_string()));
+        assert!(loaded.warnings.is_empty());
     }
 
     #[test]
     fn malformed_bookmark_entry_is_skipped_not_fatal() {
-        let entries = serde_json::json!([
-            { "root": "/a", "group": null, "order": 0 },
-            { "not_a_bookmark": true },
-            { "root": "/b", "group": "work", "order": 1 },
-        ]);
-        let parsed: Vec<Bookmark> = entries
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter_map(|v| serde_json::from_value::<Bookmark>(v.clone()).ok())
-            .collect();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bookmarks.json");
+        std::fs::write(
+            &path,
+            r#"[{"root":"/a","group":null,"order":0},{"not_a_bookmark":true},{"root":"/b","group":"work","order":1}]"#,
+        )
+        .unwrap();
+
+        let parsed = load_bookmarks_from(&path);
         assert_eq!(parsed.len(), 2);
         assert_eq!(parsed[0].root, "/a");
         assert_eq!(parsed[1].root, "/b");
+    }
+
+    #[test]
+    fn missing_bookmarks_file_is_an_empty_list_not_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let parsed = load_bookmarks_from(&dir.path().join("does-not-exist.json"));
+        assert!(parsed.is_empty());
+    }
+
+    #[test]
+    fn bookmarks_round_trip_through_the_real_save_and_load_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bookmarks.json");
+        let bookmarks = vec![
+            Bookmark {
+                root: "/a".to_string(),
+                group: None,
+                order: 0,
+            },
+            Bookmark {
+                root: "/b".to_string(),
+                group: Some("work".to_string()),
+                order: 1,
+            },
+        ];
+
+        save_bookmarks_to(&path, &bookmarks).unwrap();
+        let loaded = load_bookmarks_from(&path);
+
+        assert_eq!(loaded, bookmarks);
     }
 }

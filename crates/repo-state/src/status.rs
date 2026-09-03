@@ -357,6 +357,16 @@ mod tests {
         assert_eq!(state.paths.as_known().unwrap().untracked, 1);
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn filename_with_a_literal_quote_counts_correctly() {
+        let dir = init_repo();
+        std::fs::write(dir.path().join("has\"quote.txt"), "x").unwrap();
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+        let state = query_repository_state(&layer, dir.path(), &dir.path().join(".git")).await;
+        assert_eq!(state.paths.as_known().unwrap().untracked, 1);
+    }
+
     #[test]
     fn filename_with_an_embedded_newline_counts_correctly() {
         // `-z` disables path quoting: an embedded newline is a literal byte
