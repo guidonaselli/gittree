@@ -16,6 +16,7 @@ import {
 } from "./api/commands";
 import { onDesktopThemeChanged, onRepositoryChanged, onWatchDegraded } from "./api/events";
 import type { Bookmark, RepositoryState, SubmoduleState } from "./api/types";
+import { PALETTE_TOKENS, resolveTheme } from "./theme/apply-palette";
 import { OperationLogView } from "./features/operation-log/OperationLogView";
 import { RepositoryStatus } from "./features/repository/RepositoryStatus";
 import { SubmoduleMatrix } from "./features/submodules/SubmoduleMatrix";
@@ -109,27 +110,14 @@ export const App: Component = () => {
   });
 
   const [desktopPalette, { refetch: refetchDesktopPalette }] = createResource(getDesktopPalette);
-  let appliedPaletteTokens: string[] = [];
 
   function applyTheme(explicit: string | null | undefined) {
     const root = document.documentElement;
-    for (const token of appliedPaletteTokens) root.style.removeProperty(token);
-    appliedPaletteTokens = [];
-
-    if (explicit === "light" || explicit === "dark") {
-      root.dataset.theme = explicit;
-      return;
-    }
-    delete root.dataset.theme;
-
-    const palette = desktopPalette();
-    if (palette) {
-      root.dataset.theme = palette.mode === "light" ? "light" : "dark";
-      for (const [token, value] of Object.entries(palette.tokens)) {
-        root.style.setProperty(token, value);
-        appliedPaletteTokens.push(token);
-      }
-    }
+    const { dataTheme, tokens } = resolveTheme(explicit, desktopPalette() ?? undefined);
+    for (const token of PALETTE_TOKENS) root.style.removeProperty(token);
+    if (dataTheme) root.dataset.theme = dataTheme;
+    else delete root.dataset.theme;
+    for (const [token, value] of Object.entries(tokens)) root.style.setProperty(token, value);
   }
 
   // Explicit theme override wins over desktop-sync, which wins over the

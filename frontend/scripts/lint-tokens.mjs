@@ -7,7 +7,7 @@ import { join, relative } from "node:path";
 import { globSync } from "node:fs";
 
 const SRC = new URL("../src", import.meta.url).pathname;
-const EXEMPT = [/theme\/tokens\.css$/, /theme\/[\w-]+-theme\.(css|ts)$/];
+const EXEMPT = [/theme\/tokens\.css$/, /theme\/[\w-]+-theme\.(css|ts)$/, /\.test\.tsx?$/];
 
 const HEX_COLOR = /#[0-9a-fA-F]{3,8}\b/g;
 const RGB_COLOR = /\brgba?\(\s*\d/g;
