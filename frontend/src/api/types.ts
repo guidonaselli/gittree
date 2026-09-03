@@ -99,6 +99,59 @@ export function upstreamBasisLabel(basis: UpstreamBasis): { label: string; infer
   return { label: basis.Inferred.refname, inferred: true };
 }
 
+export type ChangeCode =
+  | "Unmodified"
+  | "Modified"
+  | "TypeChanged"
+  | "Added"
+  | "Deleted"
+  | "Renamed"
+  | "Copied"
+  | "Unmerged";
+
+export type SubmoduleFlags = {
+  commit_changed: boolean;
+  has_tracked_changes: boolean;
+  has_untracked_changes: boolean;
+};
+
+export type ChangedEntry = {
+  path: string;
+  staged: ChangeCode;
+  unstaged: ChangeCode;
+  submodule: SubmoduleFlags | null;
+  rename_or_copy_from: [string, number] | null;
+};
+
+export type ConflictEntry = { path: string; code: string };
+
+export type WorkingCopyStatus = {
+  changed: ChangedEntry[];
+  untracked: string[];
+  conflicted: ConflictEntry[];
+};
+
+export function changeCodeLabel(c: ChangeCode): string {
+  switch (c) {
+    case "Modified":
+      return "M";
+    case "TypeChanged":
+      return "T";
+    case "Added":
+      return "A";
+    case "Deleted":
+      return "D";
+    case "Renamed":
+      return "R";
+    case "Copied":
+      return "C";
+    case "Unmerged":
+      return "U";
+    default:
+      return "";
+  }
+}
+
 export function gitlinkDivergenceLabel(d: Resolved<GitlinkDivergence>): string {
   if (!isKnown(d)) return `unknown (${unknownReason(d)})`;
   const v = d.value;

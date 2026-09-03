@@ -28,4 +28,11 @@ impl<T> Resolved<T> {
             Resolved::Unknown { .. } => None,
         }
     }
+
+    pub fn into_known(self) -> Option<T> {
+        match self {
+            Resolved::Known(v) => Some(v),
+            Resolved::Unknown { .. } => None,
+        }
+    }
 }

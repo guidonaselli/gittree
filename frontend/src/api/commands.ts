@@ -5,9 +5,11 @@ import type {
   LogEntry,
   OpenRepositoryResult,
   RepositoryState,
+  Resolved,
   Settings,
   SettingsLoadResult,
   SubmoduleState,
+  WorkingCopyStatus,
 } from "./types";
 
 // Thin wrapper over the Tauri commands.
@@ -26,6 +28,10 @@ export function getRepositoryState(root: string): Promise<RepositoryState> {
 
 export function getSubmoduleMatrix(root: string): Promise<SubmoduleState[]> {
   return invoke<SubmoduleState[]>("get_submodule_matrix", { root });
+}
+
+export function getWorkingCopyStatus(root: string): Promise<Resolved<WorkingCopyStatus>> {
+  return invoke<Resolved<WorkingCopyStatus>>("get_working_copy_status", { root });
 }
 
 export function getSettings(): Promise<SettingsLoadResult> {

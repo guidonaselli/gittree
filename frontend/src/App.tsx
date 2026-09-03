@@ -7,6 +7,7 @@ import {
   getRepositoryState,
   getSettings,
   getSubmoduleMatrix,
+  getWorkingCopyStatus,
   initRepository,
   removeBookmark,
   resolveRepositoryRoot,
@@ -15,7 +16,8 @@ import {
   stopWatching,
 } from "./api/commands";
 import { onDesktopThemeChanged, onRepositoryChanged, onWatchDegraded } from "./api/events";
-import type { Bookmark, RepositoryState, SubmoduleState } from "./api/types";
+import type { Bookmark, RepositoryState, Resolved, SubmoduleState, WorkingCopyStatus } from "./api/types";
+import { WorkingCopyView } from "./features/working-copy/WorkingCopyView";
 import { PALETTE_TOKENS, resolveTheme } from "./theme/apply-palette";
 import { OperationLogView } from "./features/operation-log/OperationLogView";
 import { RepositoryStatus } from "./features/repository/RepositoryStatus";
@@ -32,6 +34,7 @@ import { TabStrip } from "./workspace/TabStrip";
 import { useWorkspace } from "./workspace/use-workspace";
 import "./layout/layout.css";
 import "./features/repository/repository.css";
+import "./features/working-copy/working-copy.css";
 import "./features/submodules/submodule-matrix.css";
 import "./features/operation-log/operation-log.css";
 import "./workspace/workspace.css";
@@ -72,6 +75,7 @@ export const App: Component = () => {
   // Per-path caches, invalidated by the watcher on a real change.
   const repoCache = new Map<string, RepositoryState>();
   const submoduleCache = new Map<string, SubmoduleState[]>();
+  const workingCopyCache = new Map<string, Resolved<WorkingCopyStatus>>();
 
   const [bookmarks, { refetch: refetchBookmarks }] = createResource(getBookmarks);
   const [settingsResult] = createResource(getSettings);
@@ -95,12 +99,22 @@ export const App: Component = () => {
     return list;
   });
 
+  const [workingCopy, { refetch: refetchWorkingCopy }] = createResource(activeViewPath, async (path) => {
+    const cached = workingCopyCache.get(path);
+    if (cached) return cached;
+    const status = await getWorkingCopyStatus(path);
+    workingCopyCache.set(path, status);
+    return status;
+  });
+
   function invalidate(path: string) {
     repoCache.delete(path);
+    workingCopyCache.delete(path);
     submoduleCache.delete(path);
     if (path === activeViewPath()) {
       refetchRepoState();
       refetchSubmodules();
+      refetchWorkingCopy();
     }
   }
 
@@ -360,6 +374,7 @@ export const App: Component = () => {
 
           <Show when={workspace.activeGroup()} fallback={<p class="text-muted">Open a repository to begin.</p>}>
             <Show when={repoState()}>{(state) => <RepositoryStatus state={state()} />}</Show>
+            <Show when={workingCopy()}>{(status) => <WorkingCopyView status={status()} />}</Show>
             <Show when={submodules() && submodules()!.length > 0}>
               <SubmoduleMatrix submodules={submodules()!} onDrillIn={drillIntoSubmodule} />
             </Show>

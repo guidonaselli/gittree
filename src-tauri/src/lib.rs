@@ -9,7 +9,8 @@ use std::time::Duration;
 use desktop_theme::DesktopPalette;
 use git_process::{check_git_version, ProcessLayer};
 use repo_state::{
-    query_repository_state, query_submodule_matrix, OpenOutcome, RepositoryState, SubmoduleState,
+    query_repository_state, query_submodule_matrix, query_working_copy_status, OpenOutcome,
+    RepositoryState, Resolved, SubmoduleState, WorkingCopyStatus,
 };
 use serde::Serialize;
 use settings::{Bookmark, BookmarksState, Settings, SettingsLoadResult};
@@ -53,6 +54,15 @@ async fn get_submodule_matrix(
 ) -> Result<Vec<SubmoduleState>, String> {
     let root = PathBuf::from(root);
     Ok(query_submodule_matrix(&state.process_layer, &root).await)
+}
+
+#[tauri::command]
+async fn get_working_copy_status(
+    state: State<'_, AppState>,
+    root: String,
+) -> Result<Resolved<WorkingCopyStatus>, String> {
+    let root = PathBuf::from(root);
+    Ok(query_working_copy_status(&state.process_layer, &root).await)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -174,6 +184,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_repository_state,
             get_submodule_matrix,
+            get_working_copy_status,
             resolve_repository_root,
             get_settings,
             save_settings,
