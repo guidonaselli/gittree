@@ -221,4 +221,85 @@ mod tests {
             .unwrap();
         assert_eq!(status.untracked, vec![PathBuf::from("untouched.txt")]);
     }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn staging_a_type_change_is_recorded_as_typechanged() {
+        let dir = init_repo();
+        std::fs::remove_file(dir.path().join("tracked.txt")).unwrap();
+        std::os::unix::fs::symlink("/nonexistent", dir.path().join("tracked.txt")).unwrap();
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+
+        stage_paths(&layer, dir.path(), &[PathBuf::from("tracked.txt")])
+            .await
+            .unwrap();
+
+        let status = query_working_copy_status(&layer, dir.path())
+            .await
+            .into_known()
+            .unwrap();
+        assert_eq!(
+            entry_codes(&status, "tracked.txt"),
+            Some((ChangeCode::TypeChanged, ChangeCode::Unmodified))
+        );
+    }
+
+    #[tokio::test]
+    async fn staging_a_submodule_gitlink_change_is_recorded_with_submodule_flags() {
+        let outer = init_repo();
+        let inner = init_repo();
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+
+        Command::new("git")
+            .args([
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                "-q",
+                inner.path().to_str().unwrap(),
+                "sub",
+            ])
+            .current_dir(outer.path())
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-q", "-m", "add submodule"])
+            .current_dir(outer.path())
+            .status()
+            .unwrap();
+
+        std::fs::write(inner.path().join("more.txt"), "x").unwrap();
+        Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(inner.path())
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-q", "-m", "advance submodule"])
+            .current_dir(inner.path())
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["-C", "sub", "pull", "-q", "origin", "main"])
+            .current_dir(outer.path())
+            .status()
+            .unwrap();
+
+        stage_paths(&layer, outer.path(), &[PathBuf::from("sub")])
+            .await
+            .unwrap();
+
+        let status = query_working_copy_status(&layer, outer.path())
+            .await
+            .into_known()
+            .unwrap();
+        let entry = status
+            .changed
+            .iter()
+            .find(|e| e.path.as_path() == Path::new("sub"))
+            .expect("expected the submodule gitlink entry");
+        assert_eq!(entry.staged, ChangeCode::Modified);
+        assert!(entry.submodule.is_some());
+    }
 }
