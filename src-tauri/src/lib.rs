@@ -6,7 +6,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use git_process::{check_git_version, ProcessLayer};
-use repo_state::{query_repository_state, query_submodule_matrix, RepositoryState, SubmoduleState};
+use repo_state::{
+    query_repository_state, query_submodule_matrix, OpenOutcome, RepositoryState, SubmoduleState,
+};
+use serde::Serialize;
 use settings::{Bookmark, BookmarksState, Settings, SettingsLoadResult};
 use tauri::{AppHandle, Manager, State};
 use watcher::WatcherState;
@@ -50,28 +53,41 @@ async fn get_submodule_matrix(
     Ok(query_submodule_matrix(&state.process_layer, &root).await)
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", content = "root")]
+enum OpenRepositoryResult {
+    Repository(String),
+    BareRepository(String),
+    NotARepository,
+}
+
 #[tauri::command]
 async fn resolve_repository_root(
     state: State<'_, AppState>,
     path: String,
-) -> Result<String, String> {
-    let call = git_process::GitCall::new(&path, ["rev-parse", "--show-toplevel"]);
-    let result = state
-        .process_layer
-        .run(
-            call,
-            git_process::Intent::Read,
-            tokio_util::sync::CancellationToken::new(),
-        )
-        .await
-        .map_err(|e| e.to_string())?;
-    if !result.ok() {
-        return Err(format!(
-            "no repository found at {path}: {}",
-            result.stderr.trim()
-        ));
+) -> Result<OpenRepositoryResult, String> {
+    let outcome =
+        repo_state::resolve_open(&state.process_layer, std::path::Path::new(&path)).await?;
+    Ok(match outcome {
+        OpenOutcome::Repository { root } => {
+            OpenRepositoryResult::Repository(root.to_string_lossy().to_string())
+        }
+        OpenOutcome::BareRepository { root } => {
+            OpenRepositoryResult::BareRepository(root.to_string_lossy().to_string())
+        }
+        OpenOutcome::NotARepository => OpenRepositoryResult::NotARepository,
+    })
+}
+
+#[tauri::command]
+async fn init_repository(state: State<'_, AppState>, path: String) -> Result<String, String> {
+    repo_state::init_repository(&state.process_layer, std::path::Path::new(&path)).await?;
+    let outcome =
+        repo_state::resolve_open(&state.process_layer, std::path::Path::new(&path)).await?;
+    match outcome {
+        OpenOutcome::Repository { root } => Ok(root.to_string_lossy().to_string()),
+        _ => Err("repository was created but could not be resolved".to_string()),
     }
-    Ok(result.stdout_utf8_lossy().trim().to_string())
 }
 
 #[tauri::command]
@@ -160,6 +176,7 @@ pub fn run() {
             start_watching,
             stop_watching,
             get_operation_log,
+            init_repository,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {

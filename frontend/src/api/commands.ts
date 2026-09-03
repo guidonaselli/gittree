@@ -1,10 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Bookmark, LogEntry, RepositoryState, Settings, SettingsLoadResult, SubmoduleState } from "./types";
+import type { Bookmark, LogEntry, OpenRepositoryResult, RepositoryState, Settings, SettingsLoadResult, SubmoduleState } from "./types";
 
 // Thin wrapper over the Tauri commands.
 
-export function resolveRepositoryRoot(path: string): Promise<string> {
-  return invoke<string>("resolve_repository_root", { path });
+export function resolveRepositoryRoot(path: string): Promise<OpenRepositoryResult> {
+  return invoke<OpenRepositoryResult>("resolve_repository_root", { path });
+}
+
+export function initRepository(path: string): Promise<string> {
+  return invoke<string>("init_repository", { path });
 }
 
 export function getRepositoryState(root: string): Promise<RepositoryState> {

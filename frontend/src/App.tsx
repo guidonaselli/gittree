@@ -6,6 +6,7 @@ import {
   getRepositoryState,
   getSettings,
   getSubmoduleMatrix,
+  initRepository,
   removeBookmark,
   resolveRepositoryRoot,
   saveSettings,
@@ -56,6 +57,7 @@ export const App: Component = () => {
 
   const [pathInput, setPathInput] = createSignal("");
   const [openError, setOpenError] = createSignal<string | null>(null);
+  const [offerInitAt, setOfferInitAt] = createSignal<string | null>(null);
   const [watchDegraded, setWatchDegraded] = createSignal<Record<string, string>>({});
   let pathInputEl: HTMLInputElement | undefined;
   function setPathInputEl(el: HTMLInputElement) {
@@ -158,16 +160,36 @@ export const App: Component = () => {
     }
   });
 
+  function activateRoot(root: string) {
+    const isNewGroup = !workspace.state().groups.some((g) => g.id === root);
+    workspace.openRepository(root);
+    if (isNewGroup) {
+      void startWatching(root);
+    }
+  }
+
   async function openPath(path: string) {
     if (!path.trim()) return;
     setOpenError(null);
+    setOfferInitAt(null);
     try {
-      const root = await resolveRepositoryRoot(path);
-      const isNewGroup = !workspace.state().groups.some((g) => g.id === root);
-      workspace.openRepository(root);
-      if (isNewGroup) {
-        void startWatching(root);
+      const result = await resolveRepositoryRoot(path);
+      if (result.kind === "NotARepository") {
+        setOfferInitAt(path);
+        return;
       }
+      activateRoot(result.root);
+    } catch (e) {
+      setOpenError(String(e));
+    }
+  }
+
+  async function confirmInit(path: string) {
+    setOpenError(null);
+    try {
+      const root = await initRepository(path);
+      setOfferInitAt(null);
+      activateRoot(root);
     } catch (e) {
       setOpenError(String(e));
     }
@@ -283,6 +305,17 @@ export const App: Component = () => {
               <button onClick={() => void openPath(pathInput())}>Open</button>
               <Show when={openError()}>
                 <div class="text-danger">{openError()}</div>
+              </Show>
+              <Show when={offerInitAt()}>
+                {(path) => (
+                  <div class="init-offer">
+                    <p class="text-muted">No repository found at {path()}.</p>
+                    <button onClick={() => void confirmInit(path())}>Initialize a repository here</button>
+                    <button class="collapse-toggle" onClick={() => setOfferInitAt(null)}>
+                      Cancel
+                    </button>
+                  </div>
+                )}
               </Show>
             </div>
             <For each={[...groupBookmarks(bookmarks() ?? []).entries()]}>

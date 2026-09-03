@@ -106,6 +106,16 @@
   padding: 0;
 }
 
+.init-offer {
+  margin-top: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-warning-bg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
 .bookmark-item {
   display: block;
   width: 100%;

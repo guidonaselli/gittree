@@ -17,6 +17,11 @@ export type LogEntry = {
   write: boolean;
 };
 
+export type OpenRepositoryResult =
+  | { kind: "Repository"; root: string }
+  | { kind: "BareRepository"; root: string }
+  | { kind: "NotARepository" };
+
 export type Resolved<T> = { state: "Known"; value: T } | { state: "Unknown"; value: { reason: string } };
 
 export function isKnown<T>(r: Resolved<T>): r is { state: "Known"; value: T } {
