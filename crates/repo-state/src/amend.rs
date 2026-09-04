@@ -53,6 +53,7 @@ pub async fn amend(
         "--amend".to_string(),
         "-m".to_string(),
         message.to_string(),
+        "--cleanup=strip".to_string(),
     ];
     if let Some(author) = &options.author {
         args.push(format!("--author={author}"));

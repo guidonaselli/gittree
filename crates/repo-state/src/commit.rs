@@ -31,7 +31,12 @@ pub async fn commit(
     if message.trim().is_empty() {
         return Err("commit message is empty".to_string());
     }
-    let mut args = vec!["commit".to_string(), "-m".to_string(), message.to_string()];
+    let mut args = vec![
+        "commit".to_string(),
+        "-m".to_string(),
+        message.to_string(),
+        "--cleanup=strip".to_string(),
+    ];
     if let Some(author) = &options.author {
         args.push(format!("--author={author}"));
     }
@@ -120,6 +125,56 @@ mod tests {
         .unwrap();
 
         assert_eq!(head_message(dir.path()), "first commit");
+    }
+
+    #[tokio::test]
+    async fn comment_char_prefixed_lines_are_stripped_like_an_interactive_commit() {
+        let dir = init_repo();
+        std::fs::write(dir.path().join("f.txt"), "x").unwrap();
+        Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+        commit(
+            &layer,
+            dir.path(),
+            "Subject\n\n# a hint from commit.template\nBody line",
+            &CommitOptions::default(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(head_message(dir.path()), "Subject\n\nBody line");
+    }
+
+    #[tokio::test]
+    async fn the_commit_message_is_never_augmented_with_an_attribution_footer() {
+        let dir = init_repo();
+        std::fs::write(dir.path().join("f.txt"), "x").unwrap();
+        Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+        commit(
+            &layer,
+            dir.path(),
+            "plain message",
+            &CommitOptions::default(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            head_message(dir.path()),
+            "plain message",
+            "GitTree must never append a Co-Authored-By or generated-by footer on its own"
+        );
     }
 
     #[tokio::test]
