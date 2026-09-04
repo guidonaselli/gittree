@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
 use tauri::{AppHandle, Emitter, Runtime};
@@ -13,11 +13,43 @@ use tauri::{AppHandle, Emitter, Runtime};
 const DEBOUNCE_WINDOW: Duration = Duration::from_millis(400);
 const POLL_INTERVAL: Duration = Duration::from_secs(3);
 
-fn is_index_refresh_noise(path: &Path) -> bool {
-    matches!(
-        path.file_name().and_then(|n| n.to_str()),
-        Some("index") | Some("index.lock")
-    )
+fn is_significant_git_path(relative: &Path) -> bool {
+    let s = relative.to_string_lossy();
+    if matches!(
+        s.as_ref(),
+        "HEAD" | "MERGE_HEAD" | "CHERRY_PICK_HEAD" | "REVERT_HEAD" | "BISECT_LOG" | "packed-refs"
+    ) {
+        return true;
+    }
+    s.starts_with("refs/")
+        || s.starts_with("rebase-merge")
+        || s.starts_with("rebase-apply")
+        || s.starts_with("logs/")
+}
+
+/// Only an allowlisted set of git-internal paths counts as a real change; everything else under `.git` is refresh noise.
+fn is_significant_change(path: &Path, git_dir: &Path) -> bool {
+    match path.strip_prefix(git_dir) {
+        Ok(relative) if relative.as_os_str().is_empty() => false,
+        Ok(relative) => is_significant_git_path(relative),
+        Err(_) => true,
+    }
+}
+
+type MtimeSignature = Vec<(PathBuf, Option<SystemTime>)>;
+
+fn mtime_signature(paths: &[PathBuf]) -> MtimeSignature {
+    let mut sig: Vec<_> = paths
+        .iter()
+        .map(|p| {
+            (
+                p.clone(),
+                std::fs::metadata(p).ok().and_then(|m| m.modified().ok()),
+            )
+        })
+        .collect();
+    sig.sort();
+    sig
 }
 
 pub enum WatchHandle {
@@ -37,13 +69,31 @@ pub fn start_watching<R: Runtime>(app: AppHandle<R>, state: &WatcherState, root:
     stop_watching(state, &root);
 
     let emit_root = root.clone();
+    let git_dir = root.join(".git");
     let app_for_native = app.clone();
+    let last_signature: Mutex<Option<MtimeSignature>> = Mutex::new(None);
     let debouncer = new_debouncer(DEBOUNCE_WINDOW, move |result: DebounceEventResult| {
         if let Ok(events) = result {
-            if events.iter().any(|e| !is_index_refresh_noise(&e.path)) {
-                let _ =
-                    app_for_native.emit("repo:changed", emit_root.to_string_lossy().to_string());
+            let significant_paths: Vec<PathBuf> = events
+                .iter()
+                .filter(|e| {
+                    e.kind == notify_debouncer_mini::DebouncedEventKind::Any
+                        && is_significant_change(&e.path, &git_dir)
+                })
+                .map(|e| e.path.clone())
+                .collect();
+            if significant_paths.is_empty() {
+                return;
             }
+            let signature = mtime_signature(&significant_paths);
+            let mut last = last_signature
+                .lock()
+                .expect("watcher signature mutex poisoned");
+            if last.as_ref() == Some(&signature) {
+                return;
+            }
+            *last = Some(signature);
+            let _ = app_for_native.emit("repo:changed", emit_root.to_string_lossy().to_string());
         }
     });
 
@@ -195,10 +245,52 @@ mod tests {
     }
 
     #[test]
-    fn index_and_index_lock_are_refresh_noise_other_git_paths_are_not() {
-        assert!(is_index_refresh_noise(Path::new("/repo/.git/index")));
-        assert!(is_index_refresh_noise(Path::new("/repo/.git/index.lock")));
-        assert!(!is_index_refresh_noise(Path::new("/repo/.git/HEAD")));
-        assert!(!is_index_refresh_noise(Path::new("/repo/f.txt")));
+    fn index_refresh_and_the_bare_git_dir_are_noise() {
+        let git_dir = Path::new("/repo/.git");
+        assert!(!is_significant_change(
+            Path::new("/repo/.git/index"),
+            git_dir
+        ));
+        assert!(!is_significant_change(
+            Path::new("/repo/.git/index.lock"),
+            git_dir
+        ));
+        assert!(!is_significant_change(git_dir, git_dir));
+        assert!(!is_significant_change(
+            Path::new("/repo/.git/objects/ab"),
+            git_dir
+        ));
+    }
+
+    #[test]
+    fn head_refs_and_working_tree_paths_are_significant() {
+        let git_dir = Path::new("/repo/.git");
+        assert!(is_significant_change(Path::new("/repo/.git/HEAD"), git_dir));
+        assert!(is_significant_change(
+            Path::new("/repo/.git/refs/heads/main"),
+            git_dir
+        ));
+        assert!(is_significant_change(
+            Path::new("/repo/.git/logs/HEAD"),
+            git_dir
+        ));
+        assert!(is_significant_change(Path::new("/repo/f.txt"), git_dir));
+    }
+
+    #[test]
+    fn mtime_signature_is_stable_for_unchanged_files_and_differs_once_touched() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f");
+        std::fs::write(&path, "a").unwrap();
+        let paths = vec![path.clone()];
+
+        let first = mtime_signature(&paths);
+        let second = mtime_signature(&paths);
+        assert_eq!(first, second);
+
+        std::thread::sleep(Duration::from_millis(20));
+        std::fs::write(&path, "b").unwrap();
+        let third = mtime_signature(&paths);
+        assert_ne!(first, third);
     }
 }
