@@ -170,6 +170,38 @@ export function getHistoryGraph(root: string, scope: HistoryScope): Promise<Grap
   return invoke<GraphResult>("get_history_graph", { root, scope });
 }
 
+export type SignatureState =
+  | "Unsigned"
+  | { Valid: { signer: string } }
+  | { Invalid: { reason: string } }
+  | { Unverifiable: { reason: string } };
+
+export interface FileStat {
+  path: string;
+  additions: number | null;
+  deletions: number | null;
+}
+
+export interface CommitDetail {
+  sha: string;
+  parents: string[];
+  author_name: string;
+  author_email: string;
+  author_date: string;
+  committer_name: string;
+  committer_email: string;
+  committer_date: string;
+  decorations: string[];
+  subject: string;
+  body: string;
+  signature: SignatureState;
+  files: FileStat[];
+}
+
+export function getCommitDetail(root: string, sha: string): Promise<CommitDetail> {
+  return invoke<CommitDetail>("get_commit_detail", { root, sha });
+}
+
 export function getSettings(): Promise<SettingsLoadResult> {
   return invoke<SettingsLoadResult>("get_settings");
 }

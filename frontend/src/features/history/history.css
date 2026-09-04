@@ -46,10 +46,25 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  font: inherit;
   font-family: var(--font-family-mono);
   font-size: var(--font-size-xs);
   white-space: nowrap;
   overflow: hidden;
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.history-row:hover {
+  background: var(--color-bg-subtle);
+}
+
+.history-row-selected {
+  background: var(--color-bg-subtle);
+  outline: var(--border-width-thin) solid var(--color-focus-ring);
 }
 
 .history-sha {
@@ -92,4 +107,95 @@
 
 .history-uncommitted-entry .history-sha {
   color: var(--color-warning);
+}
+
+.commit-detail {
+  border-top: var(--border-width-thin) solid var(--color-border);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+}
+
+.commit-detail-sha {
+  font-family: var(--font-family-mono);
+  color: var(--color-text-muted);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.commit-detail-decorations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+}
+
+.commit-detail-subject {
+  font-weight: bold;
+  margin: 0 0 var(--space-2) 0;
+}
+
+.commit-detail-body {
+  white-space: pre-wrap;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  margin: 0 0 var(--space-3) 0;
+}
+
+.commit-detail-meta {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-1) var(--space-3);
+  margin: 0 0 var(--space-3) 0;
+  font-size: var(--font-size-xs);
+}
+
+.commit-detail-meta dt {
+  color: var(--color-text-muted);
+}
+
+.commit-detail-meta dd {
+  margin: 0;
+}
+
+.commit-detail-parent {
+  font-family: var(--font-family-mono);
+  margin-right: var(--space-2);
+}
+
+.commit-detail-files {
+  width: 100%;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  border-collapse: collapse;
+}
+
+.commit-detail-file-path {
+  padding: var(--space-1) var(--space-2) var(--space-1) 0;
+}
+
+.commit-detail-file-add {
+  color: var(--color-success);
+  padding: var(--space-1) var(--space-2);
+  text-align: right;
+}
+
+.commit-detail-file-del {
+  color: var(--color-danger);
+  padding: var(--space-1) var(--space-2);
+  text-align: right;
+}
+
+.signature-valid {
+  color: var(--color-success);
+}
+
+.signature-invalid {
+  color: var(--color-danger);
+}
+
+.signature-unverifiable {
+  color: var(--color-warning);
+}
+
+.signature-unsigned {
+  color: var(--color-text-muted);
 }

@@ -7,6 +7,7 @@ import {
   type GraphRow,
   type HistoryScope,
 } from "../../api/commands";
+import { CommitDetailView } from "./CommitDetailView";
 
 const ROW_HEIGHT = 24;
 const PAGE_SIZE = 100;
@@ -33,6 +34,7 @@ export const HistoryView: Component<{
   const [version, setVersion] = createSignal(0);
   const [graphVersion, setGraphVersion] = createSignal(0);
   const [error, setError] = createSignal<string | null>(null);
+  const [selectedSha, setSelectedSha] = createSignal<string | null>(null);
 
   let cache = new Map<number, CommitSummary>();
   let loadedPages = new Set<number>();
@@ -260,9 +262,11 @@ export const HistoryView: Component<{
           <canvas class="history-graph-canvas" ref={canvasEl} style={{ width: `${GRAPH_WIDTH}px` }} />
           <For each={rowsToRender()}>
             {(row) => (
-              <div
+              <button
                 class="history-row"
+                classList={{ "history-row-selected": row.commit?.sha === selectedSha() }}
                 style={{ transform: `translateY(${row.index * ROW_HEIGHT}px)`, "padding-left": `${GRAPH_WIDTH}px` }}
+                onClick={() => row.commit && setSelectedSha(row.commit.sha)}
               >
                 <Show when={row.commit} fallback={<span class="text-muted">Loading…</span>}>
                   {(commit) => (
@@ -273,11 +277,12 @@ export const HistoryView: Component<{
                     </>
                   )}
                 </Show>
-              </div>
+              </button>
             )}
           </For>
         </div>
       </div>
+      <Show when={selectedSha()}>{(sha) => <CommitDetailView root={props.root} sha={sha()} />}</Show>
     </div>
   );
 };
