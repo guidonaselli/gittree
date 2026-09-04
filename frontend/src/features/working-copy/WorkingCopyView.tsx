@@ -92,6 +92,8 @@ export const WorkingCopyView: Component<{
   onHunksChanged: () => void;
   onCommit: (message: string, options: CommitOptions) => Promise<void>;
   commitError: string | null;
+  onCheckHeadPublished: () => Promise<boolean>;
+  onAmend: (message: string, options: CommitOptions) => Promise<void>;
 }> = (props) => {
   const [selection, setSelection] = createSignal<Selection>(null);
   const [discardTarget, setDiscardTarget] = createSignal<DiscardTarget>(null);
@@ -149,7 +151,13 @@ export const WorkingCopyView: Component<{
             </For>
           </section>
         </Show>
-        <CommitPanel stagedCount={staged().length} onCommit={props.onCommit} error={props.commitError} />
+        <CommitPanel
+          stagedCount={staged().length}
+          onCommit={props.onCommit}
+          error={props.commitError}
+          onCheckHeadPublished={props.onCheckHeadPublished}
+          onAmend={props.onAmend}
+        />
         <section class="working-copy-group">
           <div class="working-copy-group-header">
             <h3>Staged ({staged().length})</h3>

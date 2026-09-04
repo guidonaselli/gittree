@@ -1,6 +1,7 @@
 import { type Component, For, Show, createEffect, createResource, createSignal, onCleanup, onMount } from "solid-js";
 import {
   addBookmark,
+  amendWorkingCopy,
   type CommitOptions,
   commitWorkingCopy,
   deleteUntrackedWorkingCopyPaths,
@@ -13,6 +14,7 @@ import {
   getSubmoduleMatrix,
   getWorkingCopyStatus,
   initRepository,
+  isHeadPublished,
   removeBookmark,
   resolveRepositoryRoot,
   saveSettings,
@@ -197,6 +199,25 @@ export const App: Component = () => {
     if (!root) return;
     try {
       await commitWorkingCopy(root, message, options);
+      setCommitError(null);
+    } catch (err) {
+      setCommitError(String(err));
+    } finally {
+      invalidate(root);
+    }
+  }
+
+  async function checkHeadPublished(): Promise<boolean> {
+    const root = activeViewPath();
+    if (!root) return false;
+    return isHeadPublished(root);
+  }
+
+  async function amendHead(message: string, options: CommitOptions) {
+    const root = activeViewPath();
+    if (!root) return;
+    try {
+      await amendWorkingCopy(root, message, options);
       setCommitError(null);
     } catch (err) {
       setCommitError(String(err));
@@ -477,6 +498,8 @@ export const App: Component = () => {
                   onHunksChanged={() => invalidate(activeViewPath()!)}
                   onCommit={commitStaged}
                   commitError={commitError()}
+                  onCheckHeadPublished={checkHeadPublished}
+                  onAmend={amendHead}
                 />
               )}
             </Show>

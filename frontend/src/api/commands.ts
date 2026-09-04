@@ -101,6 +101,20 @@ export function commitWorkingCopy(root: string, message: string, options: Commit
   });
 }
 
+export function isHeadPublished(root: string): Promise<boolean> {
+  return invoke<boolean>("is_head_published", { root });
+}
+
+export function amendWorkingCopy(root: string, message: string, options: CommitOptions): Promise<void> {
+  return invoke<void>("amend_working_copy", {
+    root,
+    message,
+    author: options.author ?? null,
+    signOff: options.signOff,
+    sign: options.sign,
+  });
+}
+
 export function getSettings(): Promise<SettingsLoadResult> {
   return invoke<SettingsLoadResult>("get_settings");
 }
