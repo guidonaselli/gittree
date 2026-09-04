@@ -7,10 +7,11 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use git_process::ProcessLayer;
-use repo_state::{query_history_page, HistoryScope};
+use repo_state::{query_history_graph, query_history_page, HistoryScope};
 
 const COMMIT_COUNT: usize = 100_000;
 const PAGE_BUDGET: Duration = Duration::from_secs(2);
+const GRAPH_BUDGET: Duration = Duration::from_secs(2);
 
 fn git(dir: &Path, args: &[&str]) {
     let status = Command::new("git")
@@ -94,5 +95,31 @@ fn a_deep_page_fetch_meets_budget_on_a_100k_commit_history() {
     assert!(
         elapsed < PAGE_BUDGET,
         "a deep page fetch took {elapsed:?}, budget is {PAGE_BUDGET:?}"
+    );
+}
+
+#[test]
+#[ignore = "generates a 100k-commit repository; run explicitly (cargo test --workspace -- --ignored) or in CI"]
+fn lane_assignment_meets_budget_on_a_100k_commit_history() {
+    let root_holder = tempfile::tempdir().unwrap();
+    let root = root_holder.path().join("fixture");
+    generate_fixture(&root, COMMIT_COUNT);
+
+    let layer = ProcessLayer::new(8, Duration::from_secs(30));
+    let start = Instant::now();
+    let graph = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(query_history_graph(
+            &layer,
+            &root,
+            &HistoryScope::CurrentBranch,
+        ))
+        .unwrap();
+    let elapsed = start.elapsed();
+
+    assert_eq!(graph.rows.len(), COMMIT_COUNT);
+    assert!(
+        elapsed < GRAPH_BUDGET,
+        "full-history lane assignment took {elapsed:?}, budget is {GRAPH_BUDGET:?}"
     );
 }

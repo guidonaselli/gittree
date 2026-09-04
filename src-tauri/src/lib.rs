@@ -10,11 +10,11 @@ use desktop_theme::DesktopPalette;
 use git_process::{check_git_version, ProcessLayer};
 use repo_state::{
     amend, commit, commit_message_template, delete_untracked_paths, diff_file,
-    discard_tracked_paths, head_is_published, query_history_count, query_history_page,
-    query_repository_state, query_submodule_matrix, query_working_copy_status, stage_hunks,
-    stage_lines, stage_paths, stash_paths, unstage_hunks, unstage_lines, unstage_paths,
-    CommitMessageTemplate, CommitOptions, CommitSummary, FileDiff, HistoryScope, OpenOutcome,
-    RepositoryState, Resolved, SubmoduleState, WorkingCopyStatus,
+    discard_tracked_paths, head_is_published, query_history_count, query_history_graph,
+    query_history_page, query_repository_state, query_submodule_matrix, query_working_copy_status,
+    stage_hunks, stage_lines, stage_paths, stash_paths, unstage_hunks, unstage_lines,
+    unstage_paths, CommitMessageTemplate, CommitOptions, CommitSummary, FileDiff, GraphResult,
+    HistoryScope, OpenOutcome, RepositoryState, Resolved, SubmoduleState, WorkingCopyStatus,
 };
 use serde::Serialize;
 use settings::{Bookmark, BookmarksState, Settings, SettingsLoadResult};
@@ -268,6 +268,15 @@ async fn get_history_count(
 }
 
 #[tauri::command]
+async fn get_history_graph(
+    state: State<'_, AppState>,
+    root: String,
+    scope: HistoryScope,
+) -> Result<GraphResult, String> {
+    query_history_graph(&state.process_layer, &PathBuf::from(root), &scope).await
+}
+
+#[tauri::command]
 async fn amend_working_copy(
     state: State<'_, AppState>,
     root: String,
@@ -425,6 +434,7 @@ pub fn run() {
             get_commit_message_template,
             get_history_page,
             get_history_count,
+            get_history_graph,
             amend_working_copy,
             resolve_repository_root,
             get_settings,

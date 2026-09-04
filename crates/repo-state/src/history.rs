@@ -59,7 +59,7 @@ pub async fn query_history_page(
     skip: usize,
     limit: usize,
 ) -> Result<Vec<CommitSummary>, String> {
-    let mut args = vec!["log".to_string()];
+    let mut args = vec!["log".to_string(), "--date-order".to_string()];
     match scope {
         HistoryScope::CurrentBranch | HistoryScope::Path(_) => {}
         HistoryScope::AllBranches => args.push("--branches".to_string()),
