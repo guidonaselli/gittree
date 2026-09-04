@@ -282,8 +282,15 @@ async fn get_commit_detail(
     state: State<'_, AppState>,
     root: String,
     sha: String,
+    parent_index: Option<usize>,
 ) -> Result<CommitDetail, String> {
-    query_commit_detail(&state.process_layer, &PathBuf::from(root), &sha).await
+    query_commit_detail(
+        &state.process_layer,
+        &PathBuf::from(root),
+        &sha,
+        parent_index,
+    )
+    .await
 }
 
 #[tauri::command]

@@ -59,6 +59,8 @@ pub struct CommitDetail {
     pub subject: String,
     pub body: String,
     pub signature: SignatureState,
+    /// Which parent the file stats below were diffed against; `None` for a root commit (diffed against the empty tree).
+    pub diff_parent_index: Option<usize>,
     pub files: Vec<FileStat>,
 }
 
@@ -99,6 +101,7 @@ pub async fn query_commit_detail(
     layer: &ProcessLayer,
     root: &Path,
     sha: &str,
+    parent_index: Option<usize>,
 ) -> Result<CommitDetail, String> {
     let format = format!(
         "%H{FIELD_SEP}%P{FIELD_SEP}%an{FIELD_SEP}%ae{FIELD_SEP}%aI{FIELD_SEP}%cn{FIELD_SEP}%ce{FIELD_SEP}%cI{FIELD_SEP}%G?{FIELD_SEP}%GS{FIELD_SEP}%D{FIELD_SEP}%s{FIELD_SEP}%b"
@@ -142,7 +145,21 @@ pub async fn query_commit_detail(
     let subject = fields.next().unwrap_or_default().to_string();
     let body = fields.next().unwrap_or_default().trim().to_string();
 
-    let base = parents.first().map(|s| s.as_str()).unwrap_or(EMPTY_TREE);
+    let diff_parent_index = if parents.is_empty() {
+        None
+    } else {
+        let requested = parent_index.unwrap_or(0);
+        if requested >= parents.len() {
+            return Err(format!(
+                "parent index {requested} out of range: commit has {} parent(s)",
+                parents.len()
+            ));
+        }
+        Some(requested)
+    };
+    let base = diff_parent_index
+        .map(|i| parents[i].as_str())
+        .unwrap_or(EMPTY_TREE);
     let numstat = run(
         layer,
         root,
@@ -168,6 +185,7 @@ pub async fn query_commit_detail(
         subject,
         body,
         signature: signature_state(&sig_code, &signer),
+        diff_parent_index,
         files: parse_file_stats(&numstat),
     })
 }
@@ -217,7 +235,9 @@ mod tests {
         let sha = head_sha(dir.path());
 
         let layer = ProcessLayer::new(4, Duration::from_secs(5));
-        let detail = query_commit_detail(&layer, dir.path(), &sha).await.unwrap();
+        let detail = query_commit_detail(&layer, dir.path(), &sha, None)
+            .await
+            .unwrap();
 
         assert_eq!(detail.sha, sha);
         assert!(detail.parents.is_empty());
@@ -247,7 +267,9 @@ mod tests {
         let sha = head_sha(dir.path());
 
         let layer = ProcessLayer::new(4, Duration::from_secs(5));
-        let detail = query_commit_detail(&layer, dir.path(), &sha).await.unwrap();
+        let detail = query_commit_detail(&layer, dir.path(), &sha, None)
+            .await
+            .unwrap();
 
         assert_eq!(detail.parents, vec![parent_sha]);
         assert_eq!(detail.files[0].additions, Some(2));
@@ -262,7 +284,9 @@ mod tests {
         let sha = head_sha(dir.path());
 
         let layer = ProcessLayer::new(4, Duration::from_secs(5));
-        let detail = query_commit_detail(&layer, dir.path(), &sha).await.unwrap();
+        let detail = query_commit_detail(&layer, dir.path(), &sha, None)
+            .await
+            .unwrap();
 
         assert!(detail.decorations.iter().any(|d| d.contains("main")));
         assert!(detail.decorations.iter().any(|d| d.contains("v1.0")));
@@ -290,11 +314,61 @@ mod tests {
             .to_string();
 
         let layer = ProcessLayer::new(4, Duration::from_secs(5));
-        let detail = query_commit_detail(&layer, dir.path(), &sha).await.unwrap();
+        let detail = query_commit_detail(&layer, dir.path(), &sha, None)
+            .await
+            .unwrap();
 
         assert_eq!(detail.parents.len(), 2);
         assert_eq!(detail.parents[0], first_parent);
+        assert_eq!(detail.diff_parent_index, Some(0));
         assert!(detail.files.iter().any(|f| f.path == "b.txt"));
+    }
+
+    #[tokio::test]
+    async fn a_merge_commit_diff_basis_is_switchable_to_the_second_parent() {
+        let dir = init_repo();
+        commit(dir.path(), "a.txt", "on main", "on main");
+        git(dir.path(), &["checkout", "-q", "-b", "feature"]);
+        commit(dir.path(), "b.txt", "on feature", "on feature");
+        git(dir.path(), &["checkout", "-q", "main"]);
+        commit(dir.path(), "c.txt", "more on main", "more on main");
+        git(
+            dir.path(),
+            &["merge", "-q", "--no-ff", "-m", "merge feature", "feature"],
+        );
+        let sha = head_sha(dir.path());
+
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+        let against_second_parent = query_commit_detail(&layer, dir.path(), &sha, Some(1))
+            .await
+            .unwrap();
+
+        assert_eq!(against_second_parent.diff_parent_index, Some(1));
+        // Diffed against the feature branch's tip instead: main's own extra commit (c.txt)
+        // shows up as the difference, b.txt does not since feature already has it.
+        assert!(against_second_parent
+            .files
+            .iter()
+            .any(|f| f.path == "c.txt"));
+        assert!(!against_second_parent
+            .files
+            .iter()
+            .any(|f| f.path == "b.txt"));
+    }
+
+    #[tokio::test]
+    async fn an_out_of_range_parent_index_is_refused_rather_than_silently_clamped() {
+        let dir = init_repo();
+        commit(dir.path(), "a.txt", "content", "first");
+        commit(dir.path(), "a.txt", "more content", "single-parent commit");
+        let sha = head_sha(dir.path());
+
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+        let err = query_commit_detail(&layer, dir.path(), &sha, Some(1))
+            .await
+            .unwrap_err();
+
+        assert!(err.contains("out of range"), "unexpected error: {err}");
     }
 
     #[tokio::test]
@@ -314,7 +388,9 @@ mod tests {
         let sha = head_sha(dir.path());
 
         let layer = ProcessLayer::new(4, Duration::from_secs(5));
-        let detail = query_commit_detail(&layer, dir.path(), &sha).await.unwrap();
+        let detail = query_commit_detail(&layer, dir.path(), &sha, None)
+            .await
+            .unwrap();
 
         assert_eq!(detail.subject, "subject line");
         assert!(detail.body.contains("body paragraph one."));
