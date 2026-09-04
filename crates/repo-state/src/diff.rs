@@ -517,4 +517,45 @@ mod tests {
             .iter()
             .any(|h| h.lines.iter().any(|l| l.contains("line2 changed"))));
     }
+
+    #[tokio::test]
+    async fn a_whitespace_only_change_is_staged_byte_exact() {
+        let dir = init_repo();
+        std::fs::write(dir.path().join("f.txt"), "line1\nline2\nline3\n").unwrap();
+        Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-q", "-m", "init"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+
+        std::fs::write(dir.path().join("f.txt"), "line1\nline2  \nline3\n").unwrap();
+
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+        let file = diff_file(&layer, dir.path(), "f.txt", false)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(file.hunks.len(), 1);
+        assert!(file.hunks[0].lines.iter().any(|l| l == "-line2"));
+        assert!(file.hunks[0].lines.iter().any(|l| l == "+line2  "));
+
+        stage_hunks(&layer, dir.path(), "f.txt", &[0])
+            .await
+            .unwrap();
+
+        let staged_blob = Command::new("git")
+            .args(["show", ":f.txt"])
+            .current_dir(dir.path())
+            .output()
+            .unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&staged_blob.stdout),
+            "line1\nline2  \nline3\n"
+        );
+    }
 }
