@@ -211,7 +211,7 @@ async fn commit_working_copy(
     author: Option<String>,
     sign_off: bool,
     sign: bool,
-) -> Result<(), String> {
+) -> Result<String, String> {
     let options = CommitOptions {
         author,
         sign_off,
@@ -239,7 +239,7 @@ async fn amend_working_copy(
     author: Option<String>,
     sign_off: bool,
     sign: bool,
-) -> Result<(), String> {
+) -> Result<String, String> {
     let options = CommitOptions {
         author,
         sign_off,

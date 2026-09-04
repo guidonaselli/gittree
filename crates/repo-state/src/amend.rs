@@ -3,7 +3,7 @@ use std::path::Path;
 use git_process::{GitCall, Intent, ProcessLayer};
 use tokio_util::sync::CancellationToken;
 
-use crate::commit::CommitOptions;
+use crate::commit::{verbatim_output, CommitOptions};
 use crate::upstream::{resolve_upstream_basis, UpstreamBasis};
 
 /// True when HEAD is already reachable from its upstream, meaning amending
@@ -44,7 +44,7 @@ pub async fn amend(
     root: &Path,
     message: &str,
     options: &CommitOptions,
-) -> Result<(), String> {
+) -> Result<String, String> {
     if message.trim().is_empty() {
         return Err("commit message is empty".to_string());
     }
@@ -74,13 +74,11 @@ pub async fn amend(
         )
         .await
         .map_err(|e| e.to_string())?;
+    let output = verbatim_output(&result);
     if !result.ok() {
-        return Err(format!(
-            "git commit --amend failed: {}",
-            result.stderr.trim()
-        ));
+        return Err(output);
     }
-    Ok(())
+    Ok(output)
 }
 
 #[cfg(test)]
