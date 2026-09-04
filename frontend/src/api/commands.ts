@@ -124,6 +124,34 @@ export function getCommitMessageTemplate(root: string): Promise<CommitMessageTem
   return invoke<CommitMessageTemplate | null>("get_commit_message_template", { root });
 }
 
+export type HistoryScope =
+  | { kind: "CurrentBranch" }
+  | { kind: "AllBranches" }
+  | { kind: "AllRefs" }
+  | { kind: "Path"; path: string };
+
+export interface CommitSummary {
+  sha: string;
+  parents: string[];
+  author_name: string;
+  author_email: string;
+  author_date: string;
+  subject: string;
+}
+
+export function getHistoryPage(
+  root: string,
+  scope: HistoryScope,
+  skip: number,
+  limit: number,
+): Promise<CommitSummary[]> {
+  return invoke<CommitSummary[]>("get_history_page", { root, scope, skip, limit });
+}
+
+export function getHistoryCount(root: string, scope: HistoryScope): Promise<number> {
+  return invoke<number>("get_history_count", { root, scope });
+}
+
 export function getSettings(): Promise<SettingsLoadResult> {
   return invoke<SettingsLoadResult>("get_settings");
 }

@@ -1,0 +1,63 @@
+.history-view {
+  display: flex;
+  flex-direction: column;
+}
+
+.history-scope-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+}
+
+.history-scope-select,
+.history-path-input {
+  font: inherit;
+  color: inherit;
+  background: var(--color-bg-subtle);
+  border: var(--border-width-thin) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+}
+
+.history-scroll {
+  height: 60vh;
+  overflow-y: auto;
+  position: relative;
+}
+
+.history-spacer {
+  position: relative;
+  width: 100%;
+}
+
+.history-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--space-5);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.history-sha {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.history-subject {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-author {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}

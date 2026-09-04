@@ -28,6 +28,7 @@ import {
 import { onDesktopThemeChanged, onRepositoryChanged, onWatchDegraded } from "./api/events";
 import type { Bookmark, RepositoryState, Resolved, SubmoduleState, WorkingCopyStatus } from "./api/types";
 import { WorkingCopyView } from "./features/working-copy/WorkingCopyView";
+import { HistoryView } from "./features/history/HistoryView";
 import { PALETTE_TOKENS, resolveTheme } from "./theme/apply-palette";
 import { OperationLogView } from "./features/operation-log/OperationLogView";
 import { RepositoryStatus } from "./features/repository/RepositoryStatus";
@@ -45,6 +46,7 @@ import { useWorkspace } from "./workspace/use-workspace";
 import "./layout/layout.css";
 import "./features/repository/repository.css";
 import "./features/working-copy/working-copy.css";
+import "./features/history/history.css";
 import "./features/submodules/submodule-matrix.css";
 import "./features/operation-log/operation-log.css";
 import "./workspace/workspace.css";
@@ -72,6 +74,7 @@ export const App: Component = () => {
 
   const [pathInput, setPathInput] = createSignal("");
   const [openError, setOpenError] = createSignal<string | null>(null);
+  const [mainView, setMainView] = createSignal<"working-copy" | "history">("working-copy");
   const [stageError, setStageError] = createSignal<string | null>(null);
   const [commitError, setCommitError] = createSignal<string | null>(null);
   const [hookOutput, setHookOutput] = createSignal<string | null>(null);
@@ -490,28 +493,49 @@ export const App: Component = () => {
 
           <Show when={workspace.activeGroup()} fallback={<p class="text-muted">Open a repository to begin.</p>}>
             <Show when={repoState()}>{(state) => <RepositoryStatus state={state()} />}</Show>
-            <Show when={stageError()}>
-              <p class="diff-apply-error">{stageError()}</p>
+            <div class="main-view-switcher">
+              <button
+                class="collapse-toggle"
+                aria-pressed={mainView() === "working-copy"}
+                onClick={() => setMainView("working-copy")}
+              >
+                Working copy
+              </button>
+              <button
+                class="collapse-toggle"
+                aria-pressed={mainView() === "history"}
+                onClick={() => setMainView("history")}
+              >
+                History
+              </button>
+            </div>
+            <Show when={mainView() === "history"}>
+              <HistoryView root={activeViewPath()!} />
             </Show>
-            <Show when={workingCopy()}>
-              {(status) => (
-                <WorkingCopyView
-                  root={activeViewPath()!}
-                  status={status()}
-                  onStage={stagePaths}
-                  onUnstage={unstagePaths}
-                  onDiscard={discardPaths}
-                  onDeleteUntracked={deleteUntrackedPaths}
-                  onStash={stashPaths}
-                  onHunksChanged={() => invalidate(activeViewPath()!)}
-                  onCommit={commitStaged}
-                  commitError={commitError()}
-                  hookOutput={hookOutput()}
-                  messageTemplate={commitMessageTemplate() ?? null}
-                  onCheckHeadPublished={checkHeadPublished}
-                  onAmend={amendHead}
-                />
-              )}
+            <Show when={mainView() === "working-copy"}>
+              <Show when={stageError()}>
+                <p class="diff-apply-error">{stageError()}</p>
+              </Show>
+              <Show when={workingCopy()}>
+                {(status) => (
+                  <WorkingCopyView
+                    root={activeViewPath()!}
+                    status={status()}
+                    onStage={stagePaths}
+                    onUnstage={unstagePaths}
+                    onDiscard={discardPaths}
+                    onDeleteUntracked={deleteUntrackedPaths}
+                    onStash={stashPaths}
+                    onHunksChanged={() => invalidate(activeViewPath()!)}
+                    onCommit={commitStaged}
+                    commitError={commitError()}
+                    hookOutput={hookOutput()}
+                    messageTemplate={commitMessageTemplate() ?? null}
+                    onCheckHeadPublished={checkHeadPublished}
+                    onAmend={amendHead}
+                  />
+                )}
+              </Show>
             </Show>
             <Show when={submodules() && submodules()!.length > 0}>
               <SubmoduleMatrix submodules={submodules()!} onDrillIn={drillIntoSubmodule} />
