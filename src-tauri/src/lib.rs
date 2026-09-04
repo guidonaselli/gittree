@@ -9,9 +9,9 @@ use std::time::Duration;
 use desktop_theme::DesktopPalette;
 use git_process::{check_git_version, ProcessLayer};
 use repo_state::{
-    delete_untracked_paths, diff_file, discard_tracked_paths, query_repository_state,
+    commit, delete_untracked_paths, diff_file, discard_tracked_paths, query_repository_state,
     query_submodule_matrix, query_working_copy_status, stage_hunks, stage_lines, stage_paths,
-    stash_paths, unstage_hunks, unstage_lines, unstage_paths, FileDiff, OpenOutcome,
+    stash_paths, unstage_hunks, unstage_lines, unstage_paths, CommitOptions, FileDiff, OpenOutcome,
     RepositoryState, Resolved, SubmoduleState, WorkingCopyStatus,
 };
 use serde::Serialize;
@@ -202,6 +202,29 @@ async fn stash_working_copy_paths(
     .await
 }
 
+#[tauri::command]
+async fn commit_working_copy(
+    state: State<'_, AppState>,
+    root: String,
+    message: String,
+    author: Option<String>,
+    sign_off: bool,
+    sign: bool,
+) -> Result<(), String> {
+    let options = CommitOptions {
+        author,
+        sign_off,
+        sign,
+    };
+    commit(
+        &state.process_layer,
+        &PathBuf::from(root),
+        &message,
+        &options,
+    )
+    .await
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", content = "root")]
 enum OpenRepositoryResult {
@@ -332,6 +355,7 @@ pub fn run() {
             discard_working_copy_paths,
             delete_untracked_working_copy_paths,
             stash_working_copy_paths,
+            commit_working_copy,
             resolve_repository_root,
             get_settings,
             save_settings,
