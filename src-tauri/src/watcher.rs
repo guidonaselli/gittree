@@ -13,6 +13,13 @@ use tauri::{AppHandle, Emitter, Runtime};
 const DEBOUNCE_WINDOW: Duration = Duration::from_millis(400);
 const POLL_INTERVAL: Duration = Duration::from_secs(3);
 
+fn is_index_refresh_noise(path: &Path) -> bool {
+    matches!(
+        path.file_name().and_then(|n| n.to_str()),
+        Some("index") | Some("index.lock")
+    )
+}
+
 pub enum WatchHandle {
     // Held only for its Drop impl: dropping the debouncer stops the
     // underlying inotify watch. Never read otherwise.
@@ -32,8 +39,11 @@ pub fn start_watching<R: Runtime>(app: AppHandle<R>, state: &WatcherState, root:
     let emit_root = root.clone();
     let app_for_native = app.clone();
     let debouncer = new_debouncer(DEBOUNCE_WINDOW, move |result: DebounceEventResult| {
-        if result.is_ok() {
-            let _ = app_for_native.emit("repo:changed", emit_root.to_string_lossy().to_string());
+        if let Ok(events) = result {
+            if events.iter().any(|e| !is_index_refresh_noise(&e.path)) {
+                let _ =
+                    app_for_native.emit("repo:changed", emit_root.to_string_lossy().to_string());
+            }
         }
     });
 
@@ -120,15 +130,11 @@ fn spawn_poller<R: Runtime>(app: AppHandle<R>, root: PathBuf) -> WatchHandle {
     WatchHandle::Polling(task)
 }
 
-/// Cheap change signature for the polling fallback: mtime of HEAD and the index.
+/// Cheap change signature for the polling fallback: HEAD's mtime only.
 fn directory_signature(git_dir: &Path) -> Option<std::time::SystemTime> {
-    let head = std::fs::metadata(git_dir.join("HEAD"))
+    std::fs::metadata(git_dir.join("HEAD"))
         .ok()
-        .and_then(|m| m.modified().ok());
-    let index = std::fs::metadata(git_dir.join("index"))
-        .ok()
-        .and_then(|m| m.modified().ok());
-    head.max(index)
+        .and_then(|m| m.modified().ok())
 }
 
 #[cfg(test)]
@@ -186,5 +192,13 @@ mod tests {
         );
 
         stop_watching(&watcher_state, dir.path());
+    }
+
+    #[test]
+    fn index_and_index_lock_are_refresh_noise_other_git_paths_are_not() {
+        assert!(is_index_refresh_noise(Path::new("/repo/.git/index")));
+        assert!(is_index_refresh_noise(Path::new("/repo/.git/index.lock")));
+        assert!(!is_index_refresh_noise(Path::new("/repo/.git/HEAD")));
+        assert!(!is_index_refresh_noise(Path::new("/repo/f.txt")));
     }
 }
