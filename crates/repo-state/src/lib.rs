@@ -2,6 +2,7 @@
 
 mod amend;
 mod commit;
+mod commit_detail;
 mod diff;
 mod discard;
 mod graph;
@@ -17,6 +18,7 @@ mod working_copy;
 
 pub use amend::{amend, head_is_published};
 pub use commit::{commit, CommitOptions};
+pub use commit_detail::{query_commit_detail, CommitDetail, FileStat, SignatureState};
 pub use diff::{diff_file, stage_hunks, stage_lines, unstage_hunks, unstage_lines, FileDiff, Hunk};
 pub use discard::{delete_untracked_paths, discard_tracked_paths, stash_paths};
 pub use graph::{query_history_graph, GraphResult, GraphRow, LANE_BUDGET};
