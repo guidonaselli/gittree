@@ -10,8 +10,8 @@ use desktop_theme::DesktopPalette;
 use git_process::{check_git_version, ProcessLayer};
 use repo_state::{
     diff_file, query_repository_state, query_submodule_matrix, query_working_copy_status,
-    stage_hunks, stage_paths, unstage_hunks, unstage_paths, FileDiff, OpenOutcome,
-    RepositoryState, Resolved, SubmoduleState, WorkingCopyStatus,
+    stage_hunks, stage_lines, stage_paths, unstage_hunks, unstage_lines, unstage_paths, FileDiff,
+    OpenOutcome, RepositoryState, Resolved, SubmoduleState, WorkingCopyStatus,
 };
 use serde::Serialize;
 use settings::{Bookmark, BookmarksState, Settings, SettingsLoadResult};
@@ -124,6 +124,42 @@ async fn unstage_file_hunks(
         &PathBuf::from(root),
         &path,
         &hunk_indices,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn stage_file_lines(
+    state: State<'_, AppState>,
+    root: String,
+    path: String,
+    hunk_index: usize,
+    line_indices: Vec<usize>,
+) -> Result<(), String> {
+    stage_lines(
+        &state.process_layer,
+        &PathBuf::from(root),
+        &path,
+        hunk_index,
+        &line_indices,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn unstage_file_lines(
+    state: State<'_, AppState>,
+    root: String,
+    path: String,
+    hunk_index: usize,
+    line_indices: Vec<usize>,
+) -> Result<(), String> {
+    unstage_lines(
+        &state.process_layer,
+        &PathBuf::from(root),
+        &path,
+        hunk_index,
+        &line_indices,
     )
     .await
 }
@@ -253,6 +289,8 @@ pub fn run() {
             get_file_diff,
             stage_file_hunks,
             unstage_file_hunks,
+            stage_file_lines,
+            unstage_file_lines,
             resolve_repository_root,
             get_settings,
             save_settings,

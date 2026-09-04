@@ -9,7 +9,7 @@ mod submodule;
 mod upstream;
 mod working_copy;
 
-pub use diff::{diff_file, stage_hunks, unstage_hunks, FileDiff, Hunk};
+pub use diff::{diff_file, stage_hunks, stage_lines, unstage_hunks, unstage_lines, FileDiff, Hunk};
 pub use resolve::{init_repository, resolve_open, OpenOutcome};
 pub use resolved::Resolved;
 pub use staging::{stage_paths, unstage_paths};

@@ -55,6 +55,24 @@ export function unstageFileHunks(root: string, path: string, hunkIndices: number
   return invoke<void>("unstage_file_hunks", { root, path, hunkIndices });
 }
 
+export function stageFileLines(
+  root: string,
+  path: string,
+  hunkIndex: number,
+  lineIndices: number[],
+): Promise<void> {
+  return invoke<void>("stage_file_lines", { root, path, hunkIndex, lineIndices });
+}
+
+export function unstageFileLines(
+  root: string,
+  path: string,
+  hunkIndex: number,
+  lineIndices: number[],
+): Promise<void> {
+  return invoke<void>("unstage_file_lines", { root, path, hunkIndex, lineIndices });
+}
+
 export function getSettings(): Promise<SettingsLoadResult> {
   return invoke<SettingsLoadResult>("get_settings");
 }

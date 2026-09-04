@@ -123,6 +123,58 @@ pub fn build_patch(file: &FileDiff, hunk_indices: &[usize]) -> String {
     out
 }
 
+/// Builds a single-hunk patch from a subset of its changed lines; an unselected removed line becomes context, an unselected added line is dropped.
+pub fn build_partial_patch(
+    file: &FileDiff,
+    hunk_index: usize,
+    selected_line_indices: &[usize],
+) -> Option<String> {
+    let hunk = file.hunks.get(hunk_index)?;
+    let selected: std::collections::HashSet<usize> =
+        selected_line_indices.iter().copied().collect();
+
+    let mut body = Vec::new();
+    let mut old_lines = 0u32;
+    let mut new_lines = 0u32;
+    for (i, line) in hunk.lines.iter().enumerate() {
+        if let Some(rest) = line.strip_prefix(' ') {
+            body.push(format!(" {rest}"));
+            old_lines += 1;
+            new_lines += 1;
+        } else if let Some(rest) = line.strip_prefix('-') {
+            if selected.contains(&i) {
+                body.push(format!("-{rest}"));
+                old_lines += 1;
+            } else {
+                body.push(format!(" {rest}"));
+                old_lines += 1;
+                new_lines += 1;
+            }
+        } else if let Some(rest) = line.strip_prefix('+') {
+            if selected.contains(&i) {
+                body.push(format!("+{rest}"));
+                new_lines += 1;
+            }
+        } else {
+            body.push(line.clone());
+        }
+    }
+
+    let header = format!(
+        "@@ -{},{} +{},{} @@",
+        hunk.old_start, old_lines, hunk.new_start, new_lines
+    );
+    let mut out = file.header_lines.join("\n");
+    out.push('\n');
+    out.push_str(&header);
+    out.push('\n');
+    for l in &body {
+        out.push_str(l);
+        out.push('\n');
+    }
+    Some(out)
+}
+
 async fn apply_patch(
     layer: &ProcessLayer,
     root: &Path,
@@ -168,6 +220,42 @@ pub async fn unstage_hunks(
     apply_patch(layer, root, build_patch(&file, hunk_indices), true).await
 }
 
+pub async fn stage_lines(
+    layer: &ProcessLayer,
+    root: &Path,
+    path: &str,
+    hunk_index: usize,
+    line_indices: &[usize],
+) -> Result<(), String> {
+    if line_indices.is_empty() {
+        return Err("no lines selected".to_string());
+    }
+    let file = diff_file(layer, root, path, false)
+        .await?
+        .ok_or_else(|| format!("no unstaged diff for {path}"))?;
+    let patch = build_partial_patch(&file, hunk_index, line_indices)
+        .ok_or_else(|| "hunk not found for this selection".to_string())?;
+    apply_patch(layer, root, patch, false).await
+}
+
+pub async fn unstage_lines(
+    layer: &ProcessLayer,
+    root: &Path,
+    path: &str,
+    hunk_index: usize,
+    line_indices: &[usize],
+) -> Result<(), String> {
+    if line_indices.is_empty() {
+        return Err("no lines selected".to_string());
+    }
+    let file = diff_file(layer, root, path, true)
+        .await?
+        .ok_or_else(|| format!("no staged diff for {path}"))?;
+    let patch = build_partial_patch(&file, hunk_index, line_indices)
+        .ok_or_else(|| "hunk not found for this selection".to_string())?;
+    apply_patch(layer, root, patch, true).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -211,6 +299,108 @@ mod tests {
         assert!(patch.contains("@@ -1,3 +1,3 @@"));
         assert!(!patch.contains("@@ -10,2 +10,3 @@"));
         assert!(patch.contains("line2 changed"));
+    }
+
+    #[test]
+    fn a_partial_patch_keeps_an_unselected_removal_as_context() {
+        let file = parse_file_diff(SAMPLE_DIFF).unwrap();
+        // hunk 0 lines: [0]=" line1" [1]="-line2" [2]="+line2 changed" [3]=" line3"
+        let patch = build_partial_patch(&file, 0, &[2]).unwrap();
+        assert!(patch.contains("@@ -1,3 +1,4 @@"));
+        assert!(patch.contains(" line2"));
+        assert!(!patch.contains("-line2"));
+        assert!(patch.contains("+line2 changed"));
+    }
+
+    #[test]
+    fn a_partial_patch_drops_an_unselected_addition_entirely() {
+        let file = parse_file_diff(SAMPLE_DIFF).unwrap();
+        let patch = build_partial_patch(&file, 0, &[1]).unwrap();
+        assert!(patch.contains("@@ -1,3 +1,2 @@"));
+        assert!(patch.contains("-line2"));
+        assert!(!patch.contains("+line2 changed"));
+    }
+
+    #[tokio::test]
+    async fn staging_one_line_out_of_two_pairs_in_the_same_hunk() {
+        let dir = init_repo();
+        let content: String = (1..=10).map(|n| format!("line{n}\n")).collect();
+        std::fs::write(dir.path().join("f.txt"), &content).unwrap();
+        Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-q", "-m", "init"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+
+        let mut lines: Vec<String> = content.lines().map(str::to_string).collect();
+        lines[1] = "line2 changed".to_string();
+        lines[2] = "line3 changed".to_string();
+        std::fs::write(dir.path().join("f.txt"), lines.join("\n") + "\n").unwrap();
+
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+        let file = diff_file(&layer, dir.path(), "f.txt", false)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(file.hunks.len(), 1);
+        let line2_add = file.hunks[0]
+            .lines
+            .iter()
+            .position(|l| l == "+line2 changed")
+            .unwrap();
+
+        stage_lines(&layer, dir.path(), "f.txt", 0, &[line2_add])
+            .await
+            .unwrap();
+
+        let staged = diff_file(&layer, dir.path(), "f.txt", true)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(staged.hunks[0].lines.iter().any(|l| l == "+line2 changed"));
+        assert!(!staged.hunks[0]
+            .lines
+            .iter()
+            .any(|l| l.contains("line3 changed")));
+
+        let unstaged = diff_file(&layer, dir.path(), "f.txt", false)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(unstaged.hunks[0]
+            .lines
+            .iter()
+            .any(|l| l.contains("line3 changed")));
+        assert!(!unstaged.hunks[0]
+            .lines
+            .iter()
+            .any(|l| l == "+line2 changed"));
+    }
+
+    #[tokio::test]
+    async fn an_empty_line_selection_is_refused_not_a_silent_no_op() {
+        let dir = init_repo();
+        std::fs::write(dir.path().join("f.txt"), "a\nb\nc\n").unwrap();
+        Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-q", "-m", "init"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+        std::fs::write(dir.path().join("f.txt"), "a\nb changed\nc\n").unwrap();
+
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+        let result = stage_lines(&layer, dir.path(), "f.txt", 0, &[]).await;
+        assert!(result.is_err());
     }
 
     #[tokio::test]
