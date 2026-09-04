@@ -1,4 +1,4 @@
-import { type Component, For, Show, createResource } from "solid-js";
+import { type Component, For, Show, createEffect, createResource, createSignal } from "solid-js";
 import { getCommitDetail, type SignatureState } from "../../api/commands";
 
 function signatureLabel(state: SignatureState): { text: string; class: string } {
@@ -9,10 +9,16 @@ function signatureLabel(state: SignatureState): { text: string; class: string } 
 }
 
 export const CommitDetailView: Component<{ root: string; sha: string }> = (props) => {
+  const [parentIndex, setParentIndex] = createSignal<number | undefined>(undefined);
   const [detail] = createResource(
-    () => [props.root, props.sha] as const,
-    ([root, sha]) => getCommitDetail(root, sha),
+    () => [props.root, props.sha, parentIndex()] as const,
+    ([root, sha, index]) => getCommitDetail(root, sha, index),
   );
+
+  createEffect(() => {
+    void props.sha;
+    setParentIndex(undefined);
+  });
 
   return (
     <div class="commit-detail">
@@ -50,6 +56,23 @@ export const CommitDetailView: Component<{ root: string; sha: string }> = (props
               <dt>Signature</dt>
               <dd class={signatureLabel(d().signature).class}>{signatureLabel(d().signature).text}</dd>
             </dl>
+            <Show when={d().parents.length > 1}>
+              <div class="commit-detail-diff-basis">
+                <span>Diffed against:</span>
+                <select
+                  value={d().diff_parent_index ?? 0}
+                  onChange={(e) => setParentIndex(Number(e.currentTarget.value))}
+                >
+                  <For each={d().parents}>
+                    {(p, i) => (
+                      <option value={i()}>
+                        parent {i() + 1} ({p.slice(0, 7)})
+                      </option>
+                    )}
+                  </For>
+                </select>
+              </div>
+            </Show>
             <table class="commit-detail-files">
               <For each={d().files}>
                 {(f) => (

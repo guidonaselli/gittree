@@ -195,11 +195,12 @@ export interface CommitDetail {
   subject: string;
   body: string;
   signature: SignatureState;
+  diff_parent_index: number | null;
   files: FileStat[];
 }
 
-export function getCommitDetail(root: string, sha: string): Promise<CommitDetail> {
-  return invoke<CommitDetail>("get_commit_detail", { root, sha });
+export function getCommitDetail(root: string, sha: string, parentIndex?: number): Promise<CommitDetail> {
+  return invoke<CommitDetail>("get_commit_detail", { root, sha, parentIndex: parentIndex ?? null });
 }
 
 export function getSettings(): Promise<SettingsLoadResult> {
