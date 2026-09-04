@@ -188,5 +188,5 @@
   border-radius: var(--radius-sm);
   padding: var(--space-2);
   white-space: pre-wrap;
-  font-family: monospace;
+  font-family: var(--font-family-mono);
 }
