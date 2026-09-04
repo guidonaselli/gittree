@@ -67,3 +67,29 @@
   color: var(--color-text-muted);
   flex-shrink: 0;
 }
+
+.history-uncommitted-entry {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  height: var(--space-5);
+  font: inherit;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text);
+  background: transparent;
+  border: none;
+  border-bottom: var(--border-width-thin) solid var(--color-border);
+  text-align: left;
+  cursor: pointer;
+  margin-bottom: var(--space-2);
+}
+
+.history-uncommitted-entry:hover {
+  background: var(--color-bg-subtle);
+}
+
+.history-uncommitted-entry .history-sha {
+  color: var(--color-warning);
+}

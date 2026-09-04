@@ -26,7 +26,7 @@ import {
   unstageWorkingCopyPaths,
 } from "./api/commands";
 import { onDesktopThemeChanged, onRepositoryChanged, onWatchDegraded } from "./api/events";
-import type { Bookmark, RepositoryState, Resolved, SubmoduleState, WorkingCopyStatus } from "./api/types";
+import { isKnown, type Bookmark, type RepositoryState, type Resolved, type SubmoduleState, type WorkingCopyStatus } from "./api/types";
 import { WorkingCopyView } from "./features/working-copy/WorkingCopyView";
 import { HistoryView } from "./features/history/HistoryView";
 import { PALETTE_TOKENS, resolveTheme } from "./theme/apply-palette";
@@ -122,6 +122,13 @@ export const App: Component = () => {
     workingCopyCache.set(path, status);
     return status;
   });
+
+  function hasUncommittedChanges(): boolean {
+    const status = workingCopy();
+    if (!status || !isKnown(status)) return false;
+    const value = status.value;
+    return value.changed.length > 0 || value.untracked.length > 0 || value.conflicted.length > 0;
+  }
 
   const [commitMessageTemplate] = createResource(activeViewPath, getCommitMessageTemplate);
 
@@ -510,7 +517,11 @@ export const App: Component = () => {
               </button>
             </div>
             <Show when={mainView() === "history"}>
-              <HistoryView root={activeViewPath()!} />
+              <HistoryView
+                root={activeViewPath()!}
+                hasUncommittedChanges={hasUncommittedChanges()}
+                onSelectUncommitted={() => setMainView("working-copy")}
+              />
             </Show>
             <Show when={mainView() === "working-copy"}>
               <Show when={stageError()}>

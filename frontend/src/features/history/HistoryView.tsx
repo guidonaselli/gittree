@@ -20,7 +20,11 @@ function pageIndexOf(rowIndex: number): number {
   return Math.floor(rowIndex / PAGE_SIZE);
 }
 
-export const HistoryView: Component<{ root: string }> = (props) => {
+export const HistoryView: Component<{
+  root: string;
+  hasUncommittedChanges: boolean;
+  onSelectUncommitted: () => void;
+}> = (props) => {
   const [scope, setScope] = createSignal<HistoryScope>({ kind: "CurrentBranch" });
   const [pathFilter, setPathFilter] = createSignal("");
   const [totalCount, setTotalCount] = createSignal(0);
@@ -240,6 +244,12 @@ export const HistoryView: Component<{ root: string }> = (props) => {
       </div>
       <Show when={error()}>
         <p class="diff-apply-error">{error()}</p>
+      </Show>
+      <Show when={props.hasUncommittedChanges}>
+        <button class="history-uncommitted-entry" onClick={props.onSelectUncommitted}>
+          <span class="history-sha">●</span>
+          <span class="history-subject">Uncommitted changes</span>
+        </button>
       </Show>
       <div
         class="history-scroll"
