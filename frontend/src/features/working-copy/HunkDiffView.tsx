@@ -79,6 +79,7 @@ export const HunkDiffView: Component<{
     ([root, path, staged]) => getFileDiff(root, path, staged),
   );
   const [selected, setSelected] = createSignal<Set<number>>(new Set());
+  const [applyError, setApplyError] = createSignal<string | null>(null);
 
   function toggleLine(hunkIndex: number, lineIndex: number) {
     const key = hunkIndex * 100000 + lineIndex;
@@ -94,46 +95,44 @@ export const HunkDiffView: Component<{
     props.onChanged();
   }
 
-  async function stageHunk(index: number) {
+  async function runApply(action: () => Promise<void>) {
     try {
-      await stageFileHunks(props.root, props.path, [index]);
+      await action();
+      setApplyError(null);
+    } catch (err) {
+      setApplyError(String(err));
     } finally {
       await afterChange();
     }
   }
 
-  async function unstageHunk(index: number) {
-    try {
-      await unstageFileHunks(props.root, props.path, [index]);
-    } finally {
-      await afterChange();
-    }
+  function stageHunk(index: number) {
+    return runApply(() => stageFileHunks(props.root, props.path, [index]));
   }
 
-  async function stageSelected(hunkIndex: number) {
+  function unstageHunk(index: number) {
+    return runApply(() => unstageFileHunks(props.root, props.path, [index]));
+  }
+
+  function stageSelected(hunkIndex: number) {
     const lines = [...selected()]
       .filter((k) => Math.floor(k / 100000) === hunkIndex)
       .map((k) => k % 100000);
-    try {
-      await stageFileLines(props.root, props.path, hunkIndex, lines);
-    } finally {
-      await afterChange();
-    }
+    return runApply(() => stageFileLines(props.root, props.path, hunkIndex, lines));
   }
 
-  async function unstageSelected(hunkIndex: number) {
+  function unstageSelected(hunkIndex: number) {
     const lines = [...selected()]
       .filter((k) => Math.floor(k / 100000) === hunkIndex)
       .map((k) => k % 100000);
-    try {
-      await unstageFileLines(props.root, props.path, hunkIndex, lines);
-    } finally {
-      await afterChange();
-    }
+    return runApply(() => unstageFileLines(props.root, props.path, hunkIndex, lines));
   }
 
   return (
     <div class="diff-view">
+      <Show when={applyError()}>
+        <p class="diff-apply-error">{applyError()}</p>
+      </Show>
       <Show when={diff.loading}>
         <p class="text-muted">Loading diff…</p>
       </Show>

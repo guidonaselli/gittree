@@ -100,6 +100,15 @@
   outline: var(--border-width-thin) solid var(--color-focus-ring);
 }
 
+.diff-apply-error {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-2);
+  white-space: pre-wrap;
+}
+
 .diff-line-add {
   background: var(--color-success-bg);
   color: var(--color-success);

@@ -64,6 +64,7 @@ export const App: Component = () => {
 
   const [pathInput, setPathInput] = createSignal("");
   const [openError, setOpenError] = createSignal<string | null>(null);
+  const [stageError, setStageError] = createSignal<string | null>(null);
   const [offerInitAt, setOfferInitAt] = createSignal<string | null>(null);
   const [watchDegraded, setWatchDegraded] = createSignal<Record<string, string>>({});
   let pathInputEl: HTMLInputElement | undefined;
@@ -123,15 +124,27 @@ export const App: Component = () => {
   async function stagePaths(paths: string[]) {
     const root = activeViewPath();
     if (!root || paths.length === 0) return;
-    await stageWorkingCopyPaths(root, paths);
-    invalidate(root);
+    try {
+      await stageWorkingCopyPaths(root, paths);
+      setStageError(null);
+    } catch (err) {
+      setStageError(String(err));
+    } finally {
+      invalidate(root);
+    }
   }
 
   async function unstagePaths(paths: string[]) {
     const root = activeViewPath();
     if (!root || paths.length === 0) return;
-    await unstageWorkingCopyPaths(root, paths);
-    invalidate(root);
+    try {
+      await unstageWorkingCopyPaths(root, paths);
+      setStageError(null);
+    } catch (err) {
+      setStageError(String(err));
+    } finally {
+      invalidate(root);
+    }
   }
 
   // Focus the primary action whenever no group is open.
@@ -390,6 +403,9 @@ export const App: Component = () => {
 
           <Show when={workspace.activeGroup()} fallback={<p class="text-muted">Open a repository to begin.</p>}>
             <Show when={repoState()}>{(state) => <RepositoryStatus state={state()} />}</Show>
+            <Show when={stageError()}>
+              <p class="diff-apply-error">{stageError()}</p>
+            </Show>
             <Show when={workingCopy()}>
               {(status) => (
                 <WorkingCopyView
