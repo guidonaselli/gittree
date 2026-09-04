@@ -10,8 +10,10 @@ import type { Hunk } from "../../api/types";
 import { highlightLine, type Token } from "../../diff/highlight";
 import { pairHunkLines, type PairedRow } from "../../diff/side-by-side";
 import { wordDiff } from "../../diff/word-diff";
+import { NonTextualDiffView } from "./NonTextualDiffView";
 
 const FULL_FILE_CONTEXT = 1_000_000;
+const LARGE_DIFF_LINE_THRESHOLD = 2000;
 
 function isChangedLine(line: string): boolean {
   return line.startsWith("+") || line.startsWith("-");
@@ -224,6 +226,12 @@ export const HunkDiffView: Component<{
   );
   const [selected, setSelected] = createSignal<Set<number>>(new Set());
   const [applyError, setApplyError] = createSignal<string | null>(null);
+  const [allowLargeRender, setAllowLargeRender] = createSignal(false);
+
+  const totalLines = createMemo(() =>
+    (diff()?.hunks ?? []).reduce((sum, hunk) => sum + hunk.lines.length, 0),
+  );
+  const isLarge = createMemo(() => totalLines() > LARGE_DIFF_LINE_THRESHOLD);
 
   function toggleLine(hunkIndex: number, lineIndex: number) {
     const key = hunkIndex * 100000 + lineIndex;
@@ -274,67 +282,79 @@ export const HunkDiffView: Component<{
 
   return (
     <div class="diff-view" style={{ "--diff-tab-size": String(tabWidth()) }}>
-      <div class="diff-toolbar">
-        <div class="diff-mode-toggle">
-          <button
-            type="button"
-            classList={{ "diff-mode-active": mode() === "inline" }}
-            onClick={() => setMode("inline")}
-          >
-            Inline
-          </button>
-          <button
-            type="button"
-            classList={{ "diff-mode-active": mode() === "side-by-side" }}
-            onClick={() => setMode("side-by-side")}
-          >
-            Side by side
-          </button>
-        </div>
-        <label class="diff-toolbar-option">
-          <input type="checkbox" checked={ignoreWhitespace()} onChange={(e) => setIgnoreWhitespace(e.currentTarget.checked)} />
-          Ignore whitespace
-        </label>
-        <label class="diff-toolbar-option">
-          <input type="checkbox" checked={fullFile()} onChange={(e) => setFullFile(e.currentTarget.checked)} />
-          Show full file
-        </label>
-        <label class="diff-toolbar-option">
-          Tab width
-          <input
-            class="diff-tab-width-input"
-            type="number"
-            min="1"
-            max="8"
-            value={tabWidth()}
-            onInput={(e) => setTabWidth(Math.max(1, Math.min(8, Number(e.currentTarget.value) || 4)))}
-          />
-        </label>
-      </div>
       <Show when={applyError()}>
         <p class="diff-apply-error">{applyError()}</p>
       </Show>
       <Show when={diff.loading}>
         <p class="text-muted">Loading diff…</p>
       </Show>
-      <Show when={diff() && diff()!.is_binary}>
-        <p class="text-muted">Binary file, no hunk view.</p>
+      <Show when={diff() && diff()!.non_textual}>
+        {(kind) => <NonTextualDiffView root={props.root} path={props.path} staged={props.staged} kind={kind()} />}
       </Show>
-      <Show when={diff() && !diff()!.is_binary}>
-        <For each={diff()!.hunks}>
-          {(hunk, i) => (
-            <HunkBlock
-              hunk={hunk}
-              hunkIndex={i()}
-              staged={props.staged}
-              selected={selected()}
-              mode={mode()}
-              onToggleLine={toggleLine}
-              onAction={() => (props.staged ? unstageHunk(i()) : stageHunk(i()))}
-              onActionSelected={() => (props.staged ? unstageSelected(i()) : stageSelected(i()))}
+      <Show when={diff() && !diff()!.non_textual}>
+        <div class="diff-toolbar">
+          <div class="diff-mode-toggle">
+            <button
+              type="button"
+              classList={{ "diff-mode-active": mode() === "inline" }}
+              onClick={() => setMode("inline")}
+            >
+              Inline
+            </button>
+            <button
+              type="button"
+              classList={{ "diff-mode-active": mode() === "side-by-side" }}
+              onClick={() => setMode("side-by-side")}
+            >
+              Side by side
+            </button>
+          </div>
+          <label class="diff-toolbar-option">
+            <input type="checkbox" checked={ignoreWhitespace()} onChange={(e) => setIgnoreWhitespace(e.currentTarget.checked)} />
+            Ignore whitespace
+          </label>
+          <label class="diff-toolbar-option">
+            <input type="checkbox" checked={fullFile()} onChange={(e) => setFullFile(e.currentTarget.checked)} />
+            Show full file
+          </label>
+          <label class="diff-toolbar-option">
+            Tab width
+            <input
+              class="diff-tab-width-input"
+              type="number"
+              min="1"
+              max="8"
+              value={tabWidth()}
+              onInput={(e) => setTabWidth(Math.max(1, Math.min(8, Number(e.currentTarget.value) || 4)))}
             />
-          )}
-        </For>
+          </label>
+        </div>
+        <Show
+          when={!isLarge() || allowLargeRender()}
+          fallback={
+            <div class="diff-large-gate">
+              <p class="text-muted">Large diff ({totalLines().toLocaleString()} lines) — not rendered by default.</p>
+              <button type="button" class="working-copy-action" onClick={() => setAllowLargeRender(true)}>
+                Show anyway
+              </button>
+            </div>
+          }
+        >
+          <For each={diff()?.hunks ?? []}>
+            {(hunk, i) => (
+              <HunkBlock
+                hunk={hunk}
+                hunkIndex={i()}
+                staged={props.staged}
+                selected={selected()}
+                mode={mode()}
+                onToggleLine={toggleLine}
+                onAction={() => (props.staged ? unstageHunk(i()) : stageHunk(i()))}
+                onActionSelected={() => (props.staged ? unstageSelected(i()) : stageSelected(i()))}
+              />
+            )}
+          </For>
+        </Show>
       </Show>
     </div>
   );

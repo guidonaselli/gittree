@@ -140,10 +140,17 @@ export type Hunk = {
   new_lines: number;
 };
 
+export type NonTextualDiff =
+  | { Binary: { old_size: number | null; new_size: number | null; old_sha: string | null; new_sha: string | null } }
+  | { Submodule: { old_commit: string | null; new_commit: string | null } }
+  | { Symlink: { old_target: string | null; new_target: string | null } }
+  | { ModeOnly: { old_mode: string; new_mode: string } };
+
 export type FileDiff = {
   header_lines: string[];
   hunks: Hunk[];
   is_binary: boolean;
+  non_textual: NonTextualDiff | null;
 };
 
 export function changeCodeLabel(c: ChangeCode): string {

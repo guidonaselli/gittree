@@ -47,6 +47,14 @@ export function getFileDiff(root: string, path: string, staged: boolean): Promis
   return invoke<FileDiff | null>("get_file_diff", { root, path, staged });
 }
 
+export function getBlobBase64(root: string, sha: string): Promise<string> {
+  return invoke<string>("get_blob_base64", { root, sha });
+}
+
+export function getWorkingTreeFileBase64(root: string, path: string): Promise<string> {
+  return invoke<string>("get_working_tree_file_base64", { root, path });
+}
+
 export function getFileDiffWithOptions(
   root: string,
   path: string,
