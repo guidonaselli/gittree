@@ -10,9 +10,10 @@ use desktop_theme::DesktopPalette;
 use git_process::{check_git_version, ProcessLayer};
 use repo_state::{
     amend, commit, commit_message_template, delete_untracked_paths, diff_file,
-    discard_tracked_paths, head_is_published, query_repository_state, query_submodule_matrix,
-    query_working_copy_status, stage_hunks, stage_lines, stage_paths, stash_paths, unstage_hunks,
-    unstage_lines, unstage_paths, CommitMessageTemplate, CommitOptions, FileDiff, OpenOutcome,
+    discard_tracked_paths, head_is_published, query_history_count, query_history_page,
+    query_repository_state, query_submodule_matrix, query_working_copy_status, stage_hunks,
+    stage_lines, stage_paths, stash_paths, unstage_hunks, unstage_lines, unstage_paths,
+    CommitMessageTemplate, CommitOptions, CommitSummary, FileDiff, HistoryScope, OpenOutcome,
     RepositoryState, Resolved, SubmoduleState, WorkingCopyStatus,
 };
 use serde::Serialize;
@@ -240,6 +241,33 @@ async fn get_commit_message_template(
 }
 
 #[tauri::command]
+async fn get_history_page(
+    state: State<'_, AppState>,
+    root: String,
+    scope: HistoryScope,
+    skip: usize,
+    limit: usize,
+) -> Result<Vec<CommitSummary>, String> {
+    query_history_page(
+        &state.process_layer,
+        &PathBuf::from(root),
+        &scope,
+        skip,
+        limit,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn get_history_count(
+    state: State<'_, AppState>,
+    root: String,
+    scope: HistoryScope,
+) -> Result<usize, String> {
+    query_history_count(&state.process_layer, &PathBuf::from(root), &scope).await
+}
+
+#[tauri::command]
 async fn amend_working_copy(
     state: State<'_, AppState>,
     root: String,
@@ -395,6 +423,8 @@ pub fn run() {
             commit_working_copy,
             is_head_published,
             get_commit_message_template,
+            get_history_page,
+            get_history_count,
             amend_working_copy,
             resolve_repository_root,
             get_settings,
