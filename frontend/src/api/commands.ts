@@ -47,6 +47,22 @@ export function getFileDiff(root: string, path: string, staged: boolean): Promis
   return invoke<FileDiff | null>("get_file_diff", { root, path, staged });
 }
 
+export function getFileDiffWithOptions(
+  root: string,
+  path: string,
+  staged: boolean,
+  contextLines: number | undefined,
+  ignoreWhitespace: boolean,
+): Promise<FileDiff | null> {
+  return invoke<FileDiff | null>("get_file_diff_with_options", {
+    root,
+    path,
+    staged,
+    contextLines: contextLines ?? null,
+    ignoreWhitespace,
+  });
+}
+
 export function stageFileHunks(root: string, path: string, hunkIndices: number[]): Promise<void> {
   return invoke<void>("stage_file_hunks", { root, path, hunkIndices });
 }
