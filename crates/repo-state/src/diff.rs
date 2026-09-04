@@ -14,10 +14,154 @@ pub struct Hunk {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub enum NonTextualDiff {
+    Binary {
+        old_size: Option<u64>,
+        new_size: Option<u64>,
+        old_sha: Option<String>,
+        new_sha: Option<String>,
+    },
+    Submodule {
+        old_commit: Option<String>,
+        new_commit: Option<String>,
+    },
+    Symlink {
+        old_target: Option<String>,
+        new_target: Option<String>,
+    },
+    ModeOnly {
+        old_mode: String,
+        new_mode: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct FileDiff {
     pub header_lines: Vec<String>,
     pub hunks: Vec<Hunk>,
     pub is_binary: bool,
+    pub non_textual: Option<NonTextualDiff>,
+}
+
+/// Parses the two blob shas from an `index <old>..<new>[ <mode>]` header line, if present.
+fn index_line_shas(header_lines: &[String]) -> Option<(String, String)> {
+    for line in header_lines {
+        let Some(rest) = line.strip_prefix("index ") else {
+            continue;
+        };
+        let shas = rest.split(' ').next()?;
+        let Some((old_sha, new_sha)) = shas.split_once("..") else {
+            continue;
+        };
+        return Some((old_sha.to_string(), new_sha.to_string()));
+    }
+    None
+}
+
+/// Finds the object mode wherever git puts it: trailing the `index` line, or on its own
+/// `new file mode`/`deleted file mode` line for an added or removed file.
+fn object_mode(header_lines: &[String]) -> Option<String> {
+    for line in header_lines {
+        if let Some(rest) = line.strip_prefix("index ") {
+            if let Some((_, mode)) = rest.split_once(' ') {
+                return Some(mode.to_string());
+            }
+        }
+    }
+    for line in header_lines {
+        if let Some(mode) = line
+            .strip_prefix("new file mode ")
+            .or_else(|| line.strip_prefix("deleted file mode "))
+        {
+            return Some(mode.to_string());
+        }
+    }
+    None
+}
+
+fn mode_only_change(header_lines: &[String]) -> Option<(String, String)> {
+    let old_mode = header_lines
+        .iter()
+        .find_map(|l| l.strip_prefix("old mode "))?
+        .to_string();
+    let new_mode = header_lines
+        .iter()
+        .find_map(|l| l.strip_prefix("new mode "))?
+        .to_string();
+    Some((old_mode, new_mode))
+}
+
+fn zero_sha_to_none(sha: &str) -> Option<String> {
+    if sha.chars().all(|c| c == '0') {
+        None
+    } else {
+        Some(sha.to_string())
+    }
+}
+
+fn strip_first_hunk_sides(
+    hunks: &[Hunk],
+    prefix_to_strip: &str,
+) -> (Option<String>, Option<String>) {
+    let Some(hunk) = hunks.first() else {
+        return (None, None);
+    };
+    let old = hunk
+        .lines
+        .iter()
+        .find_map(|l| l.strip_prefix('-'))
+        .and_then(|l| l.strip_prefix(prefix_to_strip))
+        .map(str::to_string);
+    let new = hunk
+        .lines
+        .iter()
+        .find_map(|l| l.strip_prefix('+'))
+        .and_then(|l| l.strip_prefix(prefix_to_strip))
+        .map(str::to_string);
+    (old, new)
+}
+
+fn classify_non_textual(
+    header_lines: &[String],
+    hunks: &[Hunk],
+    is_binary: bool,
+) -> Option<NonTextualDiff> {
+    if let Some((old_mode, new_mode)) = mode_only_change(header_lines) {
+        if hunks.is_empty() && !is_binary {
+            return Some(NonTextualDiff::ModeOnly { old_mode, new_mode });
+        }
+    }
+    if let Some(mode) = object_mode(header_lines) {
+        match mode.as_str() {
+            "160000" => {
+                let (old_commit, new_commit) = strip_first_hunk_sides(hunks, "Subproject commit ");
+                return Some(NonTextualDiff::Submodule {
+                    old_commit,
+                    new_commit,
+                });
+            }
+            "120000" => {
+                let (old_target, new_target) = strip_first_hunk_sides(hunks, "");
+                return Some(NonTextualDiff::Symlink {
+                    old_target,
+                    new_target,
+                });
+            }
+            _ if is_binary => {
+                let shas = index_line_shas(header_lines);
+                let old_sha = shas.as_ref().and_then(|(o, _)| zero_sha_to_none(o));
+                let new_sha = shas.as_ref().and_then(|(_, n)| zero_sha_to_none(n));
+                return Some(NonTextualDiff::Binary {
+                    old_size: None,
+                    new_size: None,
+                    old_sha,
+                    new_sha,
+                });
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 fn parse_hunk_header(line: &str) -> Option<(u32, u32, u32, u32)> {
@@ -73,10 +217,12 @@ pub fn parse_file_diff(text: &str) -> Option<FileDiff> {
         }
     }
 
+    let non_textual = classify_non_textual(&header_lines, &hunks, is_binary);
     Some(FileDiff {
         header_lines,
         hunks,
         is_binary,
+        non_textual,
     })
 }
 
@@ -126,7 +272,82 @@ pub async fn diff_file_with_options(
     if !result.ok() {
         return Err(format!("git diff failed: {}", result.stderr.trim()));
     }
-    Ok(parse_file_diff(&result.stdout_utf8_lossy()))
+    let mut file = parse_file_diff(&result.stdout_utf8_lossy());
+    if let Some(f) = &mut file {
+        if let Some(NonTextualDiff::Binary {
+            old_sha, new_sha, ..
+        }) = f.non_textual.clone()
+        {
+            let old_size = blob_size(layer, root, old_sha.clone()).await;
+            // The worktree side of an unstaged diff isn't a real object in the store —
+            // git only computes that hash for display, so `cat-file` can't read it back.
+            let new_size = if staged {
+                blob_size(layer, root, new_sha.clone()).await
+            } else {
+                tokio::fs::metadata(root.join(path))
+                    .await
+                    .ok()
+                    .map(|m| m.len())
+            };
+            f.non_textual = Some(NonTextualDiff::Binary {
+                old_size,
+                new_size,
+                old_sha,
+                new_sha,
+            });
+        }
+    }
+    Ok(file)
+}
+
+/// Reads a blob's raw bytes and base64-encodes them, for previewing an image-like binary side.
+pub async fn read_blob_base64(
+    layer: &ProcessLayer,
+    root: &Path,
+    sha: &str,
+) -> Result<String, String> {
+    use base64::Engine;
+    let result = layer
+        .run(
+            GitCall::new(
+                root,
+                vec!["cat-file".to_string(), "blob".to_string(), sha.to_string()],
+            ),
+            Intent::Read,
+            CancellationToken::new(),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    if !result.ok() {
+        return Err(format!("git cat-file failed: {}", result.stderr.trim()));
+    }
+    Ok(base64::engine::general_purpose::STANDARD.encode(&result.stdout))
+}
+
+/// Reads a working-tree file's raw bytes and base64-encodes them. Used for the unstaged side of
+/// an image preview, since an unstaged file has no real blob object `read_blob_base64` could fetch.
+pub async fn read_working_tree_file_base64(root: &Path, path: &str) -> Result<String, String> {
+    use base64::Engine;
+    let bytes = tokio::fs::read(root.join(path))
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
+}
+
+async fn blob_size(layer: &ProcessLayer, root: &Path, sha: Option<String>) -> Option<u64> {
+    let sha = sha?;
+    let result = layer
+        .run(
+            GitCall::new(root, vec!["cat-file".to_string(), "-s".to_string(), sha]),
+            Intent::Read,
+            CancellationToken::new(),
+        )
+        .await
+        .ok()?;
+    if !result.ok() {
+        return None;
+    }
+    result.stdout_utf8_lossy().trim().parse().ok()
 }
 
 /// Builds a standalone patch from a subset of a file's hunks, kept in original order.
@@ -313,6 +534,152 @@ mod tests {
         assert_eq!(file.hunks[1].new_start, 10);
         assert_eq!(file.hunks[1].new_lines, 3);
         assert!(!file.is_binary);
+    }
+
+    #[test]
+    fn a_regular_text_diff_has_no_non_textual_classification() {
+        let file = parse_file_diff(SAMPLE_DIFF).unwrap();
+        assert_eq!(file.non_textual, None);
+    }
+
+    #[test]
+    fn a_mode_only_change_is_classified_without_a_content_diff() {
+        let text = "diff --git a/script.sh b/script.sh\nold mode 100644\nnew mode 100755\n";
+        let file = parse_file_diff(text).unwrap();
+        assert!(file.hunks.is_empty());
+        assert_eq!(
+            file.non_textual,
+            Some(NonTextualDiff::ModeOnly {
+                old_mode: "100644".to_string(),
+                new_mode: "100755".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn a_submodule_gitlink_change_is_classified_with_both_commits() {
+        let text = "diff --git a/sub b/sub\nindex 51f7df4..4ae7d63 160000\n--- a/sub\n+++ b/sub\n@@ -1 +1 @@\n-Subproject commit 51f7df4a1e256eeb1e6c7756e4b6247fa9b4f0f5\n+Subproject commit 4ae7d63b32339e560a6434a35fe9b2c162d4cedd\n";
+        let file = parse_file_diff(text).unwrap();
+        assert_eq!(
+            file.non_textual,
+            Some(NonTextualDiff::Submodule {
+                old_commit: Some("51f7df4a1e256eeb1e6c7756e4b6247fa9b4f0f5".to_string()),
+                new_commit: Some("4ae7d63b32339e560a6434a35fe9b2c162d4cedd".to_string()),
+            })
+        );
+    }
+
+    #[test]
+    fn a_symlink_change_is_classified_with_both_targets() {
+        let text = "diff --git a/link.txt b/link.txt\nindex f79a655..002d2d5 120000\n--- a/link.txt\n+++ b/link.txt\n@@ -1 +1 @@\n-target-a\n\\ No newline at end of file\n+target-b\n\\ No newline at end of file\n";
+        let file = parse_file_diff(text).unwrap();
+        assert_eq!(
+            file.non_textual,
+            Some(NonTextualDiff::Symlink {
+                old_target: Some("target-a".to_string()),
+                new_target: Some("target-b".to_string()),
+            })
+        );
+    }
+
+    #[test]
+    fn a_binary_file_change_is_classified_with_sha_placeholders_for_size_lookup() {
+        let text = "diff --git a/blob.bin b/blob.bin\nindex bdfd9fd..dbda5e5 100644\nBinary files a/blob.bin and b/blob.bin differ\n";
+        let file = parse_file_diff(text).unwrap();
+        assert!(file.is_binary);
+        assert_eq!(
+            file.non_textual,
+            Some(NonTextualDiff::Binary {
+                old_size: None,
+                new_size: None,
+                old_sha: Some("bdfd9fd".to_string()),
+                new_sha: Some("dbda5e5".to_string()),
+            })
+        );
+    }
+
+    #[test]
+    fn a_new_binary_file_reports_no_old_sha() {
+        let text = "diff --git c/big.bin i/big.bin\nnew file mode 100644\nindex 0000000..0a622c8\nBinary files /dev/null and i/big.bin differ\n";
+        let file = parse_file_diff(text).unwrap();
+        match file.non_textual {
+            Some(NonTextualDiff::Binary {
+                old_sha, new_sha, ..
+            }) => {
+                assert_eq!(old_sha, None);
+                assert_eq!(new_sha, Some("0a622c8".to_string()));
+            }
+            other => panic!("expected Binary, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn binary_blob_sizes_are_filled_in_via_a_real_cat_file_call() {
+        let dir = init_repo();
+        std::fs::write(dir.path().join("blob.bin"), [0u8, 1, 2, 3]).unwrap();
+        Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-q", "-m", "init"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+        std::fs::write(dir.path().join("blob.bin"), [0u8, 1, 2, 3, 4, 5]).unwrap();
+
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+        let file = diff_file(&layer, dir.path(), "blob.bin", false)
+            .await
+            .unwrap()
+            .unwrap();
+        match file.non_textual {
+            Some(NonTextualDiff::Binary {
+                old_size, new_size, ..
+            }) => {
+                assert_eq!(old_size, Some(4));
+                assert_eq!(new_size, Some(6));
+            }
+            other => panic!("expected Binary, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_staged_binary_change_reads_both_sizes_via_cat_file() {
+        let dir = init_repo();
+        std::fs::write(dir.path().join("blob.bin"), [0u8, 1, 2, 3]).unwrap();
+        Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-q", "-m", "init"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+        std::fs::write(dir.path().join("blob.bin"), [0u8, 1, 2, 3, 4, 5, 6]).unwrap();
+        Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+        let file = diff_file(&layer, dir.path(), "blob.bin", true)
+            .await
+            .unwrap()
+            .unwrap();
+        match file.non_textual {
+            Some(NonTextualDiff::Binary {
+                old_size, new_size, ..
+            }) => {
+                assert_eq!(old_size, Some(4));
+                assert_eq!(new_size, Some(7));
+            }
+            other => panic!("expected Binary, got {other:?}"),
+        }
     }
 
     #[test]

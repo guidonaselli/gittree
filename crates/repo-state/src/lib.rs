@@ -20,8 +20,9 @@ pub use amend::{amend, head_is_published};
 pub use commit::{commit, CommitOptions};
 pub use commit_detail::{query_commit_detail, CommitDetail, FileStat, SignatureState};
 pub use diff::{
-    diff_file, diff_file_with_options, stage_hunks, stage_lines, unstage_hunks, unstage_lines,
-    DiffViewOptions, FileDiff, Hunk,
+    diff_file, diff_file_with_options, read_blob_base64, read_working_tree_file_base64,
+    stage_hunks, stage_lines, unstage_hunks, unstage_lines, DiffViewOptions, FileDiff, Hunk,
+    NonTextualDiff,
 };
 pub use discard::{delete_untracked_paths, discard_tracked_paths, stash_paths};
 pub use graph::{query_history_graph, GraphResult, GraphRow, LANE_BUDGET};
