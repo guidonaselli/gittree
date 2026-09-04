@@ -190,3 +190,16 @@
   white-space: pre-wrap;
   font-family: var(--font-family-mono);
 }
+
+.commit-subject-guide {
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.commit-subject-guide-warning {
+  color: var(--color-warning);
+}
+
+.commit-subject-guide-danger {
+  color: var(--color-danger);
+}

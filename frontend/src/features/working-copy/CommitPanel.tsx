@@ -1,13 +1,54 @@
-import { type Component, Show, createSignal } from "solid-js";
-import type { CommitOptions } from "../../api/commands";
+import { type Component, Show, createEffect, createSignal } from "solid-js";
+import type { CommitMessageTemplate, CommitOptions } from "../../api/commands";
+
+interface Draft {
+  message: string;
+  author: string;
+  signOff: boolean;
+  sign: boolean;
+}
+
+function draftKey(root: string): string {
+  return `gittree.commit-draft.${root}`;
+}
+
+function loadDraft(root: string): Draft | null {
+  try {
+    const raw = localStorage.getItem(draftKey(root));
+    return raw !== null ? (JSON.parse(raw) as Draft) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveDraft(root: string, draft: Draft) {
+  try {
+    localStorage.setItem(draftKey(root), JSON.stringify(draft));
+  } catch {
+    // Draft persistence is a convenience; storage failures are silently ignored.
+  }
+}
+
+function clearDraft(root: string) {
+  try {
+    localStorage.removeItem(draftKey(root));
+  } catch {
+    // Same as above: nothing to recover, nothing to break.
+  }
+}
+
+const SUBJECT_SOFT_LIMIT = 50;
+const SUBJECT_HARD_LIMIT = 72;
 
 export const CommitPanel: Component<{
+  root: string;
   stagedCount: number;
   onCommit: (message: string, options: CommitOptions) => Promise<void>;
   onCheckHeadPublished: () => Promise<boolean>;
   onAmend: (message: string, options: CommitOptions) => Promise<void>;
   error: string | null;
   hookOutput: string | null;
+  messageTemplate: CommitMessageTemplate | null;
 }> = (props) => {
   const [message, setMessage] = createSignal("");
   const [author, setAuthor] = createSignal("");
@@ -16,6 +57,55 @@ export const CommitPanel: Component<{
   const [amendMode, setAmendMode] = createSignal(false);
   const [committing, setCommitting] = createSignal(false);
   const [publishedWarning, setPublishedWarning] = createSignal(false);
+  const [draftExists, setDraftExists] = createSignal(false);
+
+  createEffect(() => {
+    const draft = loadDraft(props.root);
+    if (draft) {
+      setMessage(draft.message);
+      setAuthor(draft.author);
+      setSignOff(draft.signOff);
+      setSign(draft.sign);
+      setDraftExists(true);
+    } else {
+      setMessage("");
+      setAuthor("");
+      setSignOff(false);
+      setSign(false);
+      setDraftExists(false);
+    }
+  });
+
+  createEffect(() => {
+    const template = props.messageTemplate;
+    if (!draftExists() && template && !message()) {
+      setMessage(template.content);
+    }
+  });
+
+  function persist() {
+    saveDraft(props.root, { message: message(), author: author(), signOff: signOff(), sign: sign() });
+  }
+
+  function updateMessage(value: string) {
+    setMessage(value);
+    persist();
+  }
+
+  function updateAuthor(value: string) {
+    setAuthor(value);
+    persist();
+  }
+
+  function updateSignOff(value: boolean) {
+    setSignOff(value);
+    persist();
+  }
+
+  function updateSign(value: boolean) {
+    setSign(value);
+    persist();
+  }
 
   function options(): CommitOptions {
     return { author: author().trim() || undefined, signOff: signOff(), sign: sign() };
@@ -26,6 +116,7 @@ export const CommitPanel: Component<{
     try {
       await props.onAmend(message(), options());
       setMessage("");
+      clearDraft(props.root);
       setPublishedWarning(false);
     } finally {
       setCommitting(false);
@@ -51,10 +142,13 @@ export const CommitPanel: Component<{
     try {
       await props.onCommit(message(), options());
       setMessage("");
+      clearDraft(props.root);
     } finally {
       setCommitting(false);
     }
   }
+
+  const subjectLength = () => message().split("\n")[0].length;
 
   return (
     <section class="working-copy-group commit-panel">
@@ -75,21 +169,30 @@ export const CommitPanel: Component<{
         placeholder="Commit message"
         rows={3}
         value={message()}
-        onInput={(e) => setMessage(e.currentTarget.value)}
+        onInput={(e) => updateMessage(e.currentTarget.value)}
       />
+      <p
+        class="commit-subject-guide"
+        classList={{
+          "commit-subject-guide-warning": subjectLength() > SUBJECT_SOFT_LIMIT && subjectLength() <= SUBJECT_HARD_LIMIT,
+          "commit-subject-guide-danger": subjectLength() > SUBJECT_HARD_LIMIT,
+        }}
+      >
+        Subject: {subjectLength()}/{SUBJECT_SOFT_LIMIT} characters
+      </p>
       <input
         class="commit-author-input"
         type="text"
         placeholder="Author override (Name <email>), optional"
         value={author()}
-        onInput={(e) => setAuthor(e.currentTarget.value)}
+        onInput={(e) => updateAuthor(e.currentTarget.value)}
       />
       <label class="commit-checkbox">
-        <input type="checkbox" checked={signOff()} onChange={(e) => setSignOff(e.currentTarget.checked)} />
+        <input type="checkbox" checked={signOff()} onChange={(e) => updateSignOff(e.currentTarget.checked)} />
         Sign off
       </label>
       <label class="commit-checkbox">
-        <input type="checkbox" checked={sign()} onChange={(e) => setSign(e.currentTarget.checked)} />
+        <input type="checkbox" checked={sign()} onChange={(e) => updateSign(e.currentTarget.checked)} />
         GPG/SSH sign
       </label>
       <Show when={props.error}>

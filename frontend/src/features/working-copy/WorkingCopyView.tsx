@@ -7,7 +7,7 @@ import {
   type Resolved,
   type WorkingCopyStatus,
 } from "../../api/types";
-import type { CommitOptions } from "../../api/commands";
+import type { CommitMessageTemplate, CommitOptions } from "../../api/commands";
 import { CommitPanel } from "./CommitPanel";
 import { HunkDiffView } from "./HunkDiffView";
 
@@ -93,6 +93,7 @@ export const WorkingCopyView: Component<{
   onCommit: (message: string, options: CommitOptions) => Promise<void>;
   commitError: string | null;
   hookOutput: string | null;
+  messageTemplate: CommitMessageTemplate | null;
   onCheckHeadPublished: () => Promise<boolean>;
   onAmend: (message: string, options: CommitOptions) => Promise<void>;
 }> = (props) => {
@@ -153,10 +154,12 @@ export const WorkingCopyView: Component<{
           </section>
         </Show>
         <CommitPanel
+          root={props.root}
           stagedCount={staged().length}
           onCommit={props.onCommit}
           error={props.commitError}
           hookOutput={props.hookOutput}
+          messageTemplate={props.messageTemplate}
           onCheckHeadPublished={props.onCheckHeadPublished}
           onAmend={props.onAmend}
         />

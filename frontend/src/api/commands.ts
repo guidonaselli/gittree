@@ -115,6 +115,15 @@ export function amendWorkingCopy(root: string, message: string, options: CommitO
   });
 }
 
+export interface CommitMessageTemplate {
+  content: string;
+  comment_char: string;
+}
+
+export function getCommitMessageTemplate(root: string): Promise<CommitMessageTemplate | null> {
+  return invoke<CommitMessageTemplate | null>("get_commit_message_template", { root });
+}
+
 export function getSettings(): Promise<SettingsLoadResult> {
   return invoke<SettingsLoadResult>("get_settings");
 }

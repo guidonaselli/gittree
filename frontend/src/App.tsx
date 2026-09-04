@@ -5,6 +5,7 @@ import {
   type CommitOptions,
   commitWorkingCopy,
   deleteUntrackedWorkingCopyPaths,
+  getCommitMessageTemplate,
   discardWorkingCopyPaths,
   getBookmarks,
   getDesktopPalette,
@@ -118,6 +119,8 @@ export const App: Component = () => {
     workingCopyCache.set(path, status);
     return status;
   });
+
+  const [commitMessageTemplate] = createResource(activeViewPath, getCommitMessageTemplate);
 
   function invalidate(path: string) {
     repoCache.delete(path);
@@ -504,6 +507,7 @@ export const App: Component = () => {
                   onCommit={commitStaged}
                   commitError={commitError()}
                   hookOutput={hookOutput()}
+                  messageTemplate={commitMessageTemplate() ?? null}
                   onCheckHeadPublished={checkHeadPublished}
                   onAmend={amendHead}
                 />
