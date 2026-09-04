@@ -10,12 +10,12 @@ use desktop_theme::DesktopPalette;
 use git_process::{check_git_version, ProcessLayer};
 use repo_state::{
     amend, commit, commit_message_template, delete_untracked_paths, diff_file,
-    discard_tracked_paths, head_is_published, query_commit_detail, query_history_count,
-    query_history_graph, query_history_page, query_repository_state, query_submodule_matrix,
-    query_working_copy_status, stage_hunks, stage_lines, stage_paths, stash_paths, unstage_hunks,
-    unstage_lines, unstage_paths, CommitDetail, CommitMessageTemplate, CommitOptions,
-    CommitSummary, FileDiff, GraphResult, HistoryScope, OpenOutcome, RepositoryState, Resolved,
-    SubmoduleState, WorkingCopyStatus,
+    diff_file_with_options, discard_tracked_paths, head_is_published, query_commit_detail,
+    query_history_count, query_history_graph, query_history_page, query_repository_state,
+    query_submodule_matrix, query_working_copy_status, stage_hunks, stage_lines, stage_paths,
+    stash_paths, unstage_hunks, unstage_lines, unstage_paths, CommitDetail, CommitMessageTemplate,
+    CommitOptions, CommitSummary, DiffViewOptions, FileDiff, GraphResult, HistoryScope,
+    OpenOutcome, RepositoryState, Resolved, SubmoduleState, WorkingCopyStatus,
 };
 use serde::Serialize;
 use settings::{Bookmark, BookmarksState, Settings, SettingsLoadResult};
@@ -98,6 +98,29 @@ async fn get_file_diff(
     staged: bool,
 ) -> Result<Option<FileDiff>, String> {
     diff_file(&state.process_layer, &PathBuf::from(root), &path, staged).await
+}
+
+#[tauri::command]
+async fn get_file_diff_with_options(
+    state: State<'_, AppState>,
+    root: String,
+    path: String,
+    staged: bool,
+    context_lines: Option<u32>,
+    ignore_whitespace: bool,
+) -> Result<Option<FileDiff>, String> {
+    let options = DiffViewOptions {
+        context_lines,
+        ignore_whitespace,
+    };
+    diff_file_with_options(
+        &state.process_layer,
+        &PathBuf::from(root),
+        &path,
+        staged,
+        &options,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -439,6 +462,7 @@ pub fn run() {
             stage_working_copy_paths,
             unstage_working_copy_paths,
             get_file_diff,
+            get_file_diff_with_options,
             stage_file_hunks,
             unstage_file_hunks,
             stage_file_lines,

@@ -80,15 +80,38 @@ pub fn parse_file_diff(text: &str) -> Option<FileDiff> {
     })
 }
 
+/// View-only diff options; the staging path never applies these.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct DiffViewOptions {
+    pub context_lines: Option<u32>,
+    pub ignore_whitespace: bool,
+}
+
 pub async fn diff_file(
     layer: &ProcessLayer,
     root: &Path,
     path: &str,
     staged: bool,
 ) -> Result<Option<FileDiff>, String> {
+    diff_file_with_options(layer, root, path, staged, &DiffViewOptions::default()).await
+}
+
+pub async fn diff_file_with_options(
+    layer: &ProcessLayer,
+    root: &Path,
+    path: &str,
+    staged: bool,
+    options: &DiffViewOptions,
+) -> Result<Option<FileDiff>, String> {
     let mut args = vec!["diff".to_string()];
     if staged {
         args.push("--cached".to_string());
+    }
+    if let Some(context) = options.context_lines {
+        args.push(format!("-U{context}"));
+    }
+    if options.ignore_whitespace {
+        args.push("--ignore-all-space".to_string());
     }
     args.push("--".to_string());
     args.push(path.to_string());
@@ -557,5 +580,83 @@ mod tests {
             String::from_utf8_lossy(&staged_blob.stdout),
             "line1\nline2  \nline3\n"
         );
+    }
+
+    #[tokio::test]
+    async fn ignore_whitespace_view_option_hides_a_whitespace_only_change() {
+        let dir = init_repo();
+        std::fs::write(dir.path().join("f.txt"), "line1\nline2\nline3\n").unwrap();
+        Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-q", "-m", "init"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+
+        std::fs::write(dir.path().join("f.txt"), "line1\nline2  \nline3\n").unwrap();
+
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+        let options = DiffViewOptions {
+            context_lines: None,
+            ignore_whitespace: true,
+        };
+        let file = diff_file_with_options(&layer, dir.path(), "f.txt", false, &options)
+            .await
+            .unwrap();
+        assert!(
+            file.is_none(),
+            "a whitespace-only change should vanish under --ignore-all-space"
+        );
+
+        // default view (no options) must still see the whitespace change
+        let default_file = diff_file(&layer, dir.path(), "f.txt", false)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(default_file.hunks[0].lines.iter().any(|l| l == "+line2  "));
+    }
+
+    #[tokio::test]
+    async fn a_large_context_lines_value_expands_to_the_whole_file() {
+        let dir = init_repo();
+        let content: String = (1..=20).map(|n| format!("line{n}\n")).collect();
+        std::fs::write(dir.path().join("f.txt"), &content).unwrap();
+        Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-q", "-m", "init"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+
+        let mut lines: Vec<String> = content.lines().map(str::to_string).collect();
+        lines[9] = "line10 changed".to_string();
+        std::fs::write(dir.path().join("f.txt"), lines.join("\n") + "\n").unwrap();
+
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+        let options = DiffViewOptions {
+            context_lines: Some(10_000),
+            ignore_whitespace: false,
+        };
+        let file = diff_file_with_options(&layer, dir.path(), "f.txt", false, &options)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            file.hunks.len(),
+            1,
+            "a huge context collapses to a single whole-file hunk"
+        );
+        assert!(file.hunks[0].lines.iter().any(|l| l == " line1"));
+        assert!(file.hunks[0].lines.iter().any(|l| l == " line20"));
+        assert!(file.hunks[0].lines.iter().any(|l| l == "-line10"));
+        assert!(file.hunks[0].lines.iter().any(|l| l == "+line10 changed"));
     }
 }
