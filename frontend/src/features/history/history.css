@@ -31,6 +31,12 @@
   width: 100%;
 }
 
+.history-graph-canvas {
+  position: absolute;
+  left: 0;
+  color: var(--color-text-muted);
+}
+
 .history-row {
   position: absolute;
   top: 0;

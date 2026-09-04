@@ -152,6 +152,24 @@ export function getHistoryCount(root: string, scope: HistoryScope): Promise<numb
   return invoke<number>("get_history_count", { root, scope });
 }
 
+export interface GraphRow {
+  sha: string;
+  parents: string[];
+  lane: number;
+  parent_lanes: number[];
+  is_merge: boolean;
+  overflow: boolean;
+}
+
+export interface GraphResult {
+  rows: GraphRow[];
+  max_lane: number;
+}
+
+export function getHistoryGraph(root: string, scope: HistoryScope): Promise<GraphResult> {
+  return invoke<GraphResult>("get_history_graph", { root, scope });
+}
+
 export function getSettings(): Promise<SettingsLoadResult> {
   return invoke<SettingsLoadResult>("get_settings");
 }
