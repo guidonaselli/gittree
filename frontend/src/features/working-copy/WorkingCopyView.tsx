@@ -7,6 +7,8 @@ import {
   type Resolved,
   type WorkingCopyStatus,
 } from "../../api/types";
+import type { CommitOptions } from "../../api/commands";
+import { CommitPanel } from "./CommitPanel";
 import { HunkDiffView } from "./HunkDiffView";
 
 function entryPathset(entry: ChangedEntry): string[] {
@@ -88,6 +90,8 @@ export const WorkingCopyView: Component<{
   onDeleteUntracked: (paths: string[]) => void;
   onStash: (paths: string[]) => void;
   onHunksChanged: () => void;
+  onCommit: (message: string, options: CommitOptions) => Promise<void>;
+  commitError: string | null;
 }> = (props) => {
   const [selection, setSelection] = createSignal<Selection>(null);
   const [discardTarget, setDiscardTarget] = createSignal<DiscardTarget>(null);
@@ -145,6 +149,7 @@ export const WorkingCopyView: Component<{
             </For>
           </section>
         </Show>
+        <CommitPanel stagedCount={staged().length} onCommit={props.onCommit} error={props.commitError} />
         <section class="working-copy-group">
           <div class="working-copy-group-header">
             <h3>Staged ({staged().length})</h3>

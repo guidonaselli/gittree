@@ -85,6 +85,22 @@ export function stashWorkingCopyPaths(root: string, paths: string[], message?: s
   return invoke<void>("stash_working_copy_paths", { root, paths, message: message ?? null });
 }
 
+export interface CommitOptions {
+  author?: string;
+  signOff: boolean;
+  sign: boolean;
+}
+
+export function commitWorkingCopy(root: string, message: string, options: CommitOptions): Promise<void> {
+  return invoke<void>("commit_working_copy", {
+    root,
+    message,
+    author: options.author ?? null,
+    signOff: options.signOff,
+    sign: options.sign,
+  });
+}
+
 export function getSettings(): Promise<SettingsLoadResult> {
   return invoke<SettingsLoadResult>("get_settings");
 }

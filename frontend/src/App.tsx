@@ -1,6 +1,8 @@
 import { type Component, For, Show, createEffect, createResource, createSignal, onCleanup, onMount } from "solid-js";
 import {
   addBookmark,
+  type CommitOptions,
+  commitWorkingCopy,
   deleteUntrackedWorkingCopyPaths,
   discardWorkingCopyPaths,
   getBookmarks,
@@ -68,6 +70,7 @@ export const App: Component = () => {
   const [pathInput, setPathInput] = createSignal("");
   const [openError, setOpenError] = createSignal<string | null>(null);
   const [stageError, setStageError] = createSignal<string | null>(null);
+  const [commitError, setCommitError] = createSignal<string | null>(null);
   const [offerInitAt, setOfferInitAt] = createSignal<string | null>(null);
   const [watchDegraded, setWatchDegraded] = createSignal<Record<string, string>>({});
   let pathInputEl: HTMLInputElement | undefined;
@@ -184,6 +187,19 @@ export const App: Component = () => {
       setStageError(null);
     } catch (err) {
       setStageError(String(err));
+    } finally {
+      invalidate(root);
+    }
+  }
+
+  async function commitStaged(message: string, options: CommitOptions) {
+    const root = activeViewPath();
+    if (!root) return;
+    try {
+      await commitWorkingCopy(root, message, options);
+      setCommitError(null);
+    } catch (err) {
+      setCommitError(String(err));
     } finally {
       invalidate(root);
     }
@@ -459,6 +475,8 @@ export const App: Component = () => {
                   onDeleteUntracked={deleteUntrackedPaths}
                   onStash={stashPaths}
                   onHunksChanged={() => invalidate(activeViewPath()!)}
+                  onCommit={commitStaged}
+                  commitError={commitError()}
                 />
               )}
             </Show>
