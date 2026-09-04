@@ -14,6 +14,35 @@ function entryPathset(entry: ChangedEntry): string[] {
 }
 
 type Selection = { path: string; staged: boolean } | null;
+type DiscardTarget = { paths: string[]; label: string; untracked: boolean } | null;
+
+function DiscardConfirm(props: {
+  target: NonNullable<DiscardTarget>;
+  onConfirm: () => void;
+  onStash: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div class="discard-confirm">
+      <p>
+        {props.target.untracked
+          ? `Permanently delete ${props.target.label}? Untracked files cannot be recovered from git.`
+          : `Discard changes to ${props.target.label}? This cannot be undone.`}
+      </p>
+      <div class="discard-confirm-actions">
+        <button class="working-copy-action" onClick={props.onStash}>
+          Stash instead
+        </button>
+        <button class="working-copy-action working-copy-action-danger" onClick={props.onConfirm}>
+          {props.target.untracked ? "Delete" : "Discard"}
+        </button>
+        <button class="working-copy-action" onClick={props.onCancel}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function EntryRow(props: {
   entry: ChangedEntry;
@@ -22,6 +51,7 @@ function EntryRow(props: {
   onAction: (paths: string[]) => void;
   onTogglePath: () => void;
   expanded: boolean;
+  onDiscard?: () => void;
 }) {
   return (
     <div class="working-copy-entry" classList={{ "working-copy-entry-expanded": props.expanded }}>
@@ -37,6 +67,11 @@ function EntryRow(props: {
       <Show when={props.entry.submodule}>
         <span class="badge badge-warning">submodule</span>
       </Show>
+      <Show when={props.onDiscard}>
+        <button class="working-copy-action" onClick={props.onDiscard}>
+          Discard
+        </button>
+      </Show>
       <button class="working-copy-action" onClick={() => props.onAction(entryPathset(props.entry))}>
         {props.actionLabel}
       </button>
@@ -49,13 +84,33 @@ export const WorkingCopyView: Component<{
   status: Resolved<WorkingCopyStatus>;
   onStage: (paths: string[]) => void;
   onUnstage: (paths: string[]) => void;
+  onDiscard: (paths: string[]) => void;
+  onDeleteUntracked: (paths: string[]) => void;
+  onStash: (paths: string[]) => void;
   onHunksChanged: () => void;
 }> = (props) => {
   const [selection, setSelection] = createSignal<Selection>(null);
+  const [discardTarget, setDiscardTarget] = createSignal<DiscardTarget>(null);
+
   function toggle(path: string, staged: boolean) {
     const current = selection();
     if (current && current.path === path && current.staged === staged) setSelection(null);
     else setSelection({ path, staged });
+  }
+
+  function confirmDiscard() {
+    const target = discardTarget();
+    if (!target) return;
+    if (target.untracked) props.onDeleteUntracked(target.paths);
+    else props.onDiscard(target.paths);
+    setDiscardTarget(null);
+  }
+
+  function confirmStash() {
+    const target = discardTarget();
+    if (!target) return;
+    props.onStash(target.paths);
+    setDiscardTarget(null);
   }
 
   const known = createMemo(() => (isKnown(props.status) ? props.status.value : null));
@@ -72,6 +127,11 @@ export const WorkingCopyView: Component<{
   return (
     <Show when={known()} fallback={<div class="text-muted">working copy status unknown ({reason()})</div>}>
       <div class="working-copy">
+        <Show when={discardTarget()}>
+          {(target) => (
+            <DiscardConfirm target={target()} onConfirm={confirmDiscard} onStash={confirmStash} onCancel={() => setDiscardTarget(null)} />
+          )}
+        </Show>
         <Show when={conflicted().length > 0}>
           <section class="working-copy-group">
             <h3 class="text-danger">Conflicted ({conflicted().length})</h3>
@@ -131,6 +191,7 @@ export const WorkingCopyView: Component<{
                   onAction={props.onStage}
                   onTogglePath={() => toggle(e.path, false)}
                   expanded={selection()?.path === e.path && selection()?.staged === false}
+                  onDiscard={() => setDiscardTarget({ paths: entryPathset(e), label: e.path, untracked: false })}
                 />
                 <Show when={selection()?.path === e.path && selection()?.staged === false}>
                   <HunkDiffView root={props.root} path={e.path} staged={false} onChanged={props.onHunksChanged} />
@@ -146,6 +207,12 @@ export const WorkingCopyView: Component<{
               <div class="working-copy-entry">
                 <span class="working-copy-code">?</span>
                 <span class="working-copy-path">{path}</span>
+                <button
+                  class="working-copy-action"
+                  onClick={() => setDiscardTarget({ paths: [path], label: path, untracked: true })}
+                >
+                  Delete
+                </button>
                 <button class="working-copy-action" onClick={() => props.onStage([path])}>
                   Stage
                 </button>

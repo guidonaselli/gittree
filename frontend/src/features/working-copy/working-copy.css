@@ -136,3 +136,26 @@
 .working-copy-path {
   flex: 1;
 }
+
+.working-copy-action-danger {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.working-copy-action-danger:hover {
+  background: var(--color-danger-bg);
+}
+
+.discard-confirm {
+  background: var(--color-bg-subtle);
+  border: var(--border-width-thin) solid var(--color-danger);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.discard-confirm-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}

@@ -73,6 +73,18 @@ export function unstageFileLines(
   return invoke<void>("unstage_file_lines", { root, path, hunkIndex, lineIndices });
 }
 
+export function discardWorkingCopyPaths(root: string, paths: string[]): Promise<void> {
+  return invoke<void>("discard_working_copy_paths", { root, paths });
+}
+
+export function deleteUntrackedWorkingCopyPaths(root: string, paths: string[]): Promise<void> {
+  return invoke<void>("delete_untracked_working_copy_paths", { root, paths });
+}
+
+export function stashWorkingCopyPaths(root: string, paths: string[], message?: string): Promise<void> {
+  return invoke<void>("stash_working_copy_paths", { root, paths, message: message ?? null });
+}
+
 export function getSettings(): Promise<SettingsLoadResult> {
   return invoke<SettingsLoadResult>("get_settings");
 }

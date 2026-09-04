@@ -9,9 +9,10 @@ use std::time::Duration;
 use desktop_theme::DesktopPalette;
 use git_process::{check_git_version, ProcessLayer};
 use repo_state::{
-    diff_file, query_repository_state, query_submodule_matrix, query_working_copy_status,
-    stage_hunks, stage_lines, stage_paths, unstage_hunks, unstage_lines, unstage_paths, FileDiff,
-    OpenOutcome, RepositoryState, Resolved, SubmoduleState, WorkingCopyStatus,
+    delete_untracked_paths, diff_file, discard_tracked_paths, query_repository_state,
+    query_submodule_matrix, query_working_copy_status, stage_hunks, stage_lines, stage_paths,
+    stash_paths, unstage_hunks, unstage_lines, unstage_paths, FileDiff, OpenOutcome,
+    RepositoryState, Resolved, SubmoduleState, WorkingCopyStatus,
 };
 use serde::Serialize;
 use settings::{Bookmark, BookmarksState, Settings, SettingsLoadResult};
@@ -164,6 +165,43 @@ async fn unstage_file_lines(
     .await
 }
 
+#[tauri::command]
+async fn discard_working_copy_paths(
+    state: State<'_, AppState>,
+    root: String,
+    paths: Vec<String>,
+) -> Result<(), String> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    discard_tracked_paths(&state.process_layer, &PathBuf::from(root), &paths).await
+}
+
+#[tauri::command]
+async fn delete_untracked_working_copy_paths(
+    state: State<'_, AppState>,
+    root: String,
+    paths: Vec<String>,
+) -> Result<(), String> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    delete_untracked_paths(&state.process_layer, &PathBuf::from(root), &paths).await
+}
+
+#[tauri::command]
+async fn stash_working_copy_paths(
+    state: State<'_, AppState>,
+    root: String,
+    paths: Vec<String>,
+    message: Option<String>,
+) -> Result<(), String> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    stash_paths(
+        &state.process_layer,
+        &PathBuf::from(root),
+        &paths,
+        message.as_deref(),
+    )
+    .await
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", content = "root")]
 enum OpenRepositoryResult {
@@ -291,6 +329,9 @@ pub fn run() {
             unstage_file_hunks,
             stage_file_lines,
             unstage_file_lines,
+            discard_working_copy_paths,
+            delete_untracked_working_copy_paths,
+            stash_working_copy_paths,
             resolve_repository_root,
             get_settings,
             save_settings,

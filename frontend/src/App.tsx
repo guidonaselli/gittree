@@ -1,6 +1,8 @@
 import { type Component, For, Show, createEffect, createResource, createSignal, onCleanup, onMount } from "solid-js";
 import {
   addBookmark,
+  deleteUntrackedWorkingCopyPaths,
+  discardWorkingCopyPaths,
   getBookmarks,
   getDesktopPalette,
   getOperationLog,
@@ -13,6 +15,7 @@ import {
   resolveRepositoryRoot,
   saveSettings,
   stageWorkingCopyPaths,
+  stashWorkingCopyPaths,
   startWatching,
   stopWatching,
   unstageWorkingCopyPaths,
@@ -139,6 +142,45 @@ export const App: Component = () => {
     if (!root || paths.length === 0) return;
     try {
       await unstageWorkingCopyPaths(root, paths);
+      setStageError(null);
+    } catch (err) {
+      setStageError(String(err));
+    } finally {
+      invalidate(root);
+    }
+  }
+
+  async function discardPaths(paths: string[]) {
+    const root = activeViewPath();
+    if (!root || paths.length === 0) return;
+    try {
+      await discardWorkingCopyPaths(root, paths);
+      setStageError(null);
+    } catch (err) {
+      setStageError(String(err));
+    } finally {
+      invalidate(root);
+    }
+  }
+
+  async function deleteUntrackedPaths(paths: string[]) {
+    const root = activeViewPath();
+    if (!root || paths.length === 0) return;
+    try {
+      await deleteUntrackedWorkingCopyPaths(root, paths);
+      setStageError(null);
+    } catch (err) {
+      setStageError(String(err));
+    } finally {
+      invalidate(root);
+    }
+  }
+
+  async function stashPaths(paths: string[]) {
+    const root = activeViewPath();
+    if (!root || paths.length === 0) return;
+    try {
+      await stashWorkingCopyPaths(root, paths, "GitTree discard");
       setStageError(null);
     } catch (err) {
       setStageError(String(err));
@@ -413,6 +455,9 @@ export const App: Component = () => {
                   status={status()}
                   onStage={stagePaths}
                   onUnstage={unstagePaths}
+                  onDiscard={discardPaths}
+                  onDeleteUntracked={deleteUntrackedPaths}
+                  onStash={stashPaths}
                   onHunksChanged={() => invalidate(activeViewPath()!)}
                 />
               )}
