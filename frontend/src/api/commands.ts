@@ -91,8 +91,8 @@ export interface CommitOptions {
   sign: boolean;
 }
 
-export function commitWorkingCopy(root: string, message: string, options: CommitOptions): Promise<void> {
-  return invoke<void>("commit_working_copy", {
+export function commitWorkingCopy(root: string, message: string, options: CommitOptions): Promise<string> {
+  return invoke<string>("commit_working_copy", {
     root,
     message,
     author: options.author ?? null,
@@ -105,8 +105,8 @@ export function isHeadPublished(root: string): Promise<boolean> {
   return invoke<boolean>("is_head_published", { root });
 }
 
-export function amendWorkingCopy(root: string, message: string, options: CommitOptions): Promise<void> {
-  return invoke<void>("amend_working_copy", {
+export function amendWorkingCopy(root: string, message: string, options: CommitOptions): Promise<string> {
+  return invoke<string>("amend_working_copy", {
     root,
     message,
     author: options.author ?? null,

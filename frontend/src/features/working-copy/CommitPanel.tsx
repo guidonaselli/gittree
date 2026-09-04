@@ -7,6 +7,7 @@ export const CommitPanel: Component<{
   onCheckHeadPublished: () => Promise<boolean>;
   onAmend: (message: string, options: CommitOptions) => Promise<void>;
   error: string | null;
+  hookOutput: string | null;
 }> = (props) => {
   const [message, setMessage] = createSignal("");
   const [author, setAuthor] = createSignal("");
@@ -93,6 +94,9 @@ export const CommitPanel: Component<{
       </label>
       <Show when={props.error}>
         <p class="diff-apply-error">{props.error}</p>
+      </Show>
+      <Show when={props.hookOutput}>
+        <pre class="commit-hook-output">{props.hookOutput}</pre>
       </Show>
       <Show when={publishedWarning()}>
         <div class="discard-confirm">

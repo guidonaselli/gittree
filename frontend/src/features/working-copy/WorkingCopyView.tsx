@@ -92,6 +92,7 @@ export const WorkingCopyView: Component<{
   onHunksChanged: () => void;
   onCommit: (message: string, options: CommitOptions) => Promise<void>;
   commitError: string | null;
+  hookOutput: string | null;
   onCheckHeadPublished: () => Promise<boolean>;
   onAmend: (message: string, options: CommitOptions) => Promise<void>;
 }> = (props) => {
@@ -155,6 +156,7 @@ export const WorkingCopyView: Component<{
           stagedCount={staged().length}
           onCommit={props.onCommit}
           error={props.commitError}
+          hookOutput={props.hookOutput}
           onCheckHeadPublished={props.onCheckHeadPublished}
           onAmend={props.onAmend}
         />

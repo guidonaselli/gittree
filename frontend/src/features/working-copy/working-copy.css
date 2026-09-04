@@ -181,3 +181,12 @@
   align-items: center;
   gap: var(--space-2);
 }
+
+.commit-hook-output {
+  background: var(--color-bg-subtle);
+  border: var(--border-width-thin) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  white-space: pre-wrap;
+  font-family: monospace;
+}

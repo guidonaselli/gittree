@@ -73,6 +73,7 @@ export const App: Component = () => {
   const [openError, setOpenError] = createSignal<string | null>(null);
   const [stageError, setStageError] = createSignal<string | null>(null);
   const [commitError, setCommitError] = createSignal<string | null>(null);
+  const [hookOutput, setHookOutput] = createSignal<string | null>(null);
   const [offerInitAt, setOfferInitAt] = createSignal<string | null>(null);
   const [watchDegraded, setWatchDegraded] = createSignal<Record<string, string>>({});
   let pathInputEl: HTMLInputElement | undefined;
@@ -198,10 +199,12 @@ export const App: Component = () => {
     const root = activeViewPath();
     if (!root) return;
     try {
-      await commitWorkingCopy(root, message, options);
+      const output = await commitWorkingCopy(root, message, options);
       setCommitError(null);
+      setHookOutput(output || null);
     } catch (err) {
       setCommitError(String(err));
+      setHookOutput(null);
     } finally {
       invalidate(root);
     }
@@ -217,10 +220,12 @@ export const App: Component = () => {
     const root = activeViewPath();
     if (!root) return;
     try {
-      await amendWorkingCopy(root, message, options);
+      const output = await amendWorkingCopy(root, message, options);
       setCommitError(null);
+      setHookOutput(output || null);
     } catch (err) {
       setCommitError(String(err));
+      setHookOutput(null);
     } finally {
       invalidate(root);
     }
@@ -498,6 +503,7 @@ export const App: Component = () => {
                   onHunksChanged={() => invalidate(activeViewPath()!)}
                   onCommit={commitStaged}
                   commitError={commitError()}
+                  hookOutput={hookOutput()}
                   onCheckHeadPublished={checkHeadPublished}
                   onAmend={amendHead}
                 />
