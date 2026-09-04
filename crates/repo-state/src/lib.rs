@@ -1,5 +1,6 @@
 //! The repository and submodule state model.
 
+mod amend;
 mod commit;
 mod diff;
 mod discard;
@@ -11,6 +12,7 @@ mod submodule;
 mod upstream;
 mod working_copy;
 
+pub use amend::{amend, head_is_published};
 pub use commit::{commit, CommitOptions};
 pub use diff::{diff_file, stage_hunks, stage_lines, unstage_hunks, unstage_lines, FileDiff, Hunk};
 pub use discard::{delete_untracked_paths, discard_tracked_paths, stash_paths};
