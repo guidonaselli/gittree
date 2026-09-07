@@ -55,6 +55,27 @@ export function getWorkingTreeFileBase64(root: string, path: string): Promise<st
   return invoke<string>("get_working_tree_file_base64", { root, path });
 }
 
+export interface BlameLine {
+  sha: string;
+  author_name: string;
+  author_email: string;
+  author_time: number;
+  summary: string;
+  orig_line_no: number;
+  final_line_no: number;
+  content: string;
+  is_boundary: boolean;
+}
+
+export function getBlame(
+  root: string,
+  path: string,
+  ignoreWhitespace: boolean,
+  rev?: string,
+): Promise<BlameLine[]> {
+  return invoke<BlameLine[]>("get_blame", { root, path, ignoreWhitespace, rev: rev ?? null });
+}
+
 export function getFileDiffWithOptions(
   root: string,
   path: string,

@@ -8,6 +8,7 @@ import {
   type WorkingCopyStatus,
 } from "../../api/types";
 import type { CommitMessageTemplate, CommitOptions } from "../../api/commands";
+import { BlameView } from "./BlameView";
 import { CommitPanel } from "./CommitPanel";
 import { HunkDiffView } from "./HunkDiffView";
 
@@ -54,6 +55,8 @@ function EntryRow(props: {
   onTogglePath: () => void;
   expanded: boolean;
   onDiscard?: () => void;
+  onToggleBlame: () => void;
+  blameShown: boolean;
 }) {
   return (
     <div class="working-copy-entry" classList={{ "working-copy-entry-expanded": props.expanded }}>
@@ -74,6 +77,9 @@ function EntryRow(props: {
           Discard
         </button>
       </Show>
+      <button class="working-copy-action" classList={{ "diff-mode-active": props.blameShown }} onClick={props.onToggleBlame}>
+        Blame
+      </button>
       <button class="working-copy-action" onClick={() => props.onAction(entryPathset(props.entry))}>
         {props.actionLabel}
       </button>
@@ -99,11 +105,16 @@ export const WorkingCopyView: Component<{
 }> = (props) => {
   const [selection, setSelection] = createSignal<Selection>(null);
   const [discardTarget, setDiscardTarget] = createSignal<DiscardTarget>(null);
+  const [blamePath, setBlamePath] = createSignal<string | null>(null);
 
   function toggle(path: string, staged: boolean) {
     const current = selection();
     if (current && current.path === path && current.staged === staged) setSelection(null);
     else setSelection({ path, staged });
+  }
+
+  function toggleBlame(path: string) {
+    setBlamePath(blamePath() === path ? null : path);
   }
 
   function confirmDiscard() {
@@ -172,22 +183,30 @@ export const WorkingCopyView: Component<{
               </button>
             </Show>
           </div>
-          <For each={staged()}>
-            {(e) => (
-              <>
-                <EntryRow
-                  entry={e}
-                  code={changeCodeLabel(e.staged)}
-                  actionLabel="Unstage"
-                  onAction={props.onUnstage}
-                  onTogglePath={() => toggle(e.path, true)}
-                  expanded={selection()?.path === e.path && selection()?.staged === true}
-                />
-                <Show when={selection()?.path === e.path && selection()?.staged === true}>
-                  <HunkDiffView root={props.root} path={e.path} staged={true} onChanged={props.onHunksChanged} />
-                </Show>
-              </>
-            )}
+          <For each={staged().map((e) => e.path)}>
+            {(path) => {
+              const entry = createMemo(() => staged().find((x) => x.path === path)!);
+              return (
+                <>
+                  <EntryRow
+                    entry={entry()}
+                    code={changeCodeLabel(entry().staged)}
+                    actionLabel="Unstage"
+                    onAction={props.onUnstage}
+                    onTogglePath={() => toggle(path, true)}
+                    expanded={selection()?.path === path && selection()?.staged === true}
+                    onToggleBlame={() => toggleBlame(path)}
+                    blameShown={blamePath() === path}
+                  />
+                  <Show when={selection()?.path === path && selection()?.staged === true}>
+                    <HunkDiffView root={props.root} path={path} staged={true} onChanged={props.onHunksChanged} />
+                  </Show>
+                  <Show when={blamePath() === path}>
+                    <BlameView root={props.root} path={path} />
+                  </Show>
+                </>
+              );
+            }}
           </For>
         </section>
         <section class="working-copy-group">
@@ -199,23 +218,31 @@ export const WorkingCopyView: Component<{
               </button>
             </Show>
           </div>
-          <For each={unstaged()}>
-            {(e) => (
-              <>
-                <EntryRow
-                  entry={e}
-                  code={changeCodeLabel(e.unstaged)}
-                  actionLabel="Stage"
-                  onAction={props.onStage}
-                  onTogglePath={() => toggle(e.path, false)}
-                  expanded={selection()?.path === e.path && selection()?.staged === false}
-                  onDiscard={() => setDiscardTarget({ paths: entryPathset(e), label: e.path, untracked: false })}
-                />
-                <Show when={selection()?.path === e.path && selection()?.staged === false}>
-                  <HunkDiffView root={props.root} path={e.path} staged={false} onChanged={props.onHunksChanged} />
-                </Show>
-              </>
-            )}
+          <For each={unstaged().map((e) => e.path)}>
+            {(path) => {
+              const entry = createMemo(() => unstaged().find((x) => x.path === path)!);
+              return (
+                <>
+                  <EntryRow
+                    entry={entry()}
+                    code={changeCodeLabel(entry().unstaged)}
+                    actionLabel="Stage"
+                    onAction={props.onStage}
+                    onTogglePath={() => toggle(path, false)}
+                    expanded={selection()?.path === path && selection()?.staged === false}
+                    onDiscard={() => setDiscardTarget({ paths: entryPathset(entry()), label: path, untracked: false })}
+                    onToggleBlame={() => toggleBlame(path)}
+                    blameShown={blamePath() === path}
+                  />
+                  <Show when={selection()?.path === path && selection()?.staged === false}>
+                    <HunkDiffView root={props.root} path={path} staged={false} onChanged={props.onHunksChanged} />
+                  </Show>
+                  <Show when={blamePath() === path}>
+                    <BlameView root={props.root} path={path} />
+                  </Show>
+                </>
+              );
+            }}
           </For>
         </section>
         <section class="working-copy-group">
