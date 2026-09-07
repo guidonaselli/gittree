@@ -1,6 +1,7 @@
 //! The repository and submodule state model.
 
 mod amend;
+mod blame;
 mod commit;
 mod commit_detail;
 mod diff;
@@ -17,6 +18,7 @@ mod upstream;
 mod working_copy;
 
 pub use amend::{amend, head_is_published};
+pub use blame::{query_blame, BlameLine, BlameOptions};
 pub use commit::{commit, CommitOptions};
 pub use commit_detail::{query_commit_detail, CommitDetail, FileStat, SignatureState};
 pub use diff::{

@@ -10,13 +10,13 @@ use desktop_theme::DesktopPalette;
 use git_process::{check_git_version, ProcessLayer};
 use repo_state::{
     amend, commit, commit_message_template, delete_untracked_paths, diff_file,
-    diff_file_with_options, discard_tracked_paths, head_is_published, query_commit_detail,
-    query_history_count, query_history_graph, query_history_page, query_repository_state,
-    query_submodule_matrix, query_working_copy_status, read_blob_base64,
+    diff_file_with_options, discard_tracked_paths, head_is_published, query_blame,
+    query_commit_detail, query_history_count, query_history_graph, query_history_page,
+    query_repository_state, query_submodule_matrix, query_working_copy_status, read_blob_base64,
     read_working_tree_file_base64, stage_hunks, stage_lines, stage_paths, stash_paths,
-    unstage_hunks, unstage_lines, unstage_paths, CommitDetail, CommitMessageTemplate,
-    CommitOptions, CommitSummary, DiffViewOptions, FileDiff, GraphResult, HistoryScope,
-    OpenOutcome, RepositoryState, Resolved, SubmoduleState, WorkingCopyStatus,
+    unstage_hunks, unstage_lines, unstage_paths, BlameLine, BlameOptions, CommitDetail,
+    CommitMessageTemplate, CommitOptions, CommitSummary, DiffViewOptions, FileDiff, GraphResult,
+    HistoryScope, OpenOutcome, RepositoryState, Resolved, SubmoduleState, WorkingCopyStatus,
 };
 use serde::Serialize;
 use settings::{Bookmark, BookmarksState, Settings, SettingsLoadResult};
@@ -136,6 +136,21 @@ async fn get_blob_base64(
 #[tauri::command]
 async fn get_working_tree_file_base64(root: String, path: String) -> Result<String, String> {
     read_working_tree_file_base64(&PathBuf::from(root), &path).await
+}
+
+#[tauri::command]
+async fn get_blame(
+    state: State<'_, AppState>,
+    root: String,
+    path: String,
+    ignore_whitespace: bool,
+    rev: Option<String>,
+) -> Result<Vec<BlameLine>, String> {
+    let options = BlameOptions {
+        ignore_whitespace,
+        rev,
+    };
+    query_blame(&state.process_layer, &PathBuf::from(root), &path, &options).await
 }
 
 #[tauri::command]
@@ -480,6 +495,7 @@ pub fn run() {
             get_file_diff_with_options,
             get_blob_base64,
             get_working_tree_file_base64,
+            get_blame,
             stage_file_hunks,
             unstage_file_hunks,
             stage_file_lines,
