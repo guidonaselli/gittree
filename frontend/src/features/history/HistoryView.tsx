@@ -1,11 +1,15 @@
 import { type Component, For, Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import {
+  cancelHistorySearch,
   getHistoryCount,
   getHistoryGraph,
   getHistoryPage,
+  searchHistory,
   type CommitSummary,
+  type ContentSearchMode,
   type GraphRow,
   type HistoryScope,
+  type HistorySearchResult,
 } from "../../api/commands";
 import { CommitDetailView } from "./CommitDetailView";
 import { HistoricalFileView } from "./HistoricalFileView";
@@ -45,6 +49,105 @@ export const HistoryView: Component<{
   const [compareMode, setCompareMode] = createSignal(false);
   const [historicalFile, setHistoricalFile] = createSignal<{ path: string; rev: string } | null>(null);
   const [blameFile, setBlameFile] = createSignal<{ path: string; rev?: string } | null>(null);
+  const [searchOpen, setSearchOpen] = createSignal(false);
+  const [searchQuery, setSearchQuery] = createSignal("");
+  const [searchType, setSearchType] = createSignal<"message" | "author" | "path" | "content_pickaxe" | "content_regex">("message");
+  const [searchSince, setSearchSince] = createSignal("");
+  const [searchUntil, setSearchUntil] = createSignal("");
+  const [isSearching, setIsSearching] = createSignal(false);
+  const [searchResults, setSearchResults] = createSignal<HistorySearchResult | null>(null);
+  const [searchError, setSearchError] = createSignal<string | null>(null);
+
+  async function executeSearch(loadMore = false) {
+    const q = searchQuery().trim();
+    const type = searchType();
+    const since = searchSince().trim() || undefined;
+    const until = searchUntil().trim() || undefined;
+
+    let message: string | undefined;
+    let author: string | undefined;
+    let path: string | undefined;
+    let content_query: string | undefined;
+    let content_mode: ContentSearchMode | undefined;
+
+    if (q) {
+      switch (type) {
+        case "message":
+          message = q;
+          break;
+        case "author":
+          author = q;
+          break;
+        case "path":
+          path = q;
+          break;
+        case "content_pickaxe":
+          content_query = q;
+          content_mode = "Pickaxe";
+          break;
+        case "content_regex":
+          content_query = q;
+          content_mode = "Regex";
+          break;
+      }
+    }
+
+    if (!message && !author && !path && !content_query && !since && !until) {
+      setSearchResults(null);
+      setSearchError(null);
+      return;
+    }
+
+    const currentCommits = loadMore ? (searchResults()?.commits ?? []) : [];
+    const skip = currentCommits.length;
+
+    setIsSearching(true);
+    setSearchError(null);
+    try {
+      const result = await searchHistory(props.root, {
+        scope: activeScope(),
+        message,
+        author,
+        path,
+        since,
+        until,
+        content_query,
+        content_mode,
+        skip,
+        limit: 100,
+      });
+      if (loadMore) {
+        setSearchResults({
+          commits: [...currentCommits, ...result.commits],
+          truncated: result.truncated,
+        });
+      } else {
+        setSearchResults(result);
+      }
+    } catch (err) {
+      const str = String(err);
+      if (!str.includes("cancelled")) {
+        setSearchError(str);
+      }
+    } finally {
+      setIsSearching(false);
+    }
+  }
+
+  async function handleCancelSearch() {
+    try {
+      await cancelHistorySearch();
+    } catch (_) {}
+    setIsSearching(false);
+  }
+
+  function handleClearSearch() {
+    setSearchQuery("");
+    setSearchSince("");
+    setSearchUntil("");
+    setSearchResults(null);
+    setSearchError(null);
+  }
 
   let cache = new Map<number, CommitSummary>();
   let loadedPages = new Set<number>();
@@ -318,53 +421,196 @@ export const HistoryView: Component<{
         >
           {compareMode() ? "Exit compare mode" : "Compare revisions"}
         </button>
+        <button
+          class="collapse-toggle"
+          classList={{ "diff-mode-active": searchOpen() }}
+          onClick={() => {
+            const next = !searchOpen();
+            setSearchOpen(next);
+            if (!next) handleClearSearch();
+          }}
+          title="Search history by message, author, content, path, or date"
+        >
+          {searchOpen() ? "Close search" : "Search"}
+        </button>
       </div>
+
+      <Show when={searchOpen()}>
+        <div class="history-search-bar">
+          <select
+            class="history-search-type"
+            value={searchType()}
+            onChange={(e) => setSearchType(e.currentTarget.value as any)}
+          >
+            <option value="message">Message</option>
+            <option value="author">Author</option>
+            <option value="content_pickaxe">Content (-S)</option>
+            <option value="content_regex">Content regex (-G)</option>
+            <option value="path">Path</option>
+          </select>
+          <input
+            class="history-search-input"
+            type="text"
+            placeholder={
+              searchType() === "content_pickaxe"
+                ? "String added/removed (-S)..."
+                : searchType() === "content_regex"
+                ? "Regex matching diff (-G)..."
+                : searchType() === "author"
+                ? "Author name or email..."
+                : searchType() === "path"
+                ? "Path..."
+                : "Commit message..."
+            }
+            value={searchQuery()}
+            onInput={(e) => setSearchQuery(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void executeSearch(false);
+            }}
+          />
+          <input
+            class="history-search-date"
+            type="text"
+            placeholder="Since date"
+            value={searchSince()}
+            onInput={(e) => setSearchSince(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void executeSearch(false);
+            }}
+          />
+          <input
+            class="history-search-date"
+            type="text"
+            placeholder="Until date"
+            value={searchUntil()}
+            onInput={(e) => setSearchUntil(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void executeSearch(false);
+            }}
+          />
+          <button
+            class="collapse-toggle"
+            disabled={isSearching()}
+            onClick={() => void executeSearch(false)}
+          >
+            {isSearching() ? "Searching…" : "Search"}
+          </button>
+          <Show when={isSearching()}>
+            <button class="collapse-toggle" onClick={() => void handleCancelSearch()}>
+              Cancel
+            </button>
+          </Show>
+          <button class="collapse-toggle" onClick={handleClearSearch}>
+            Clear
+          </button>
+        </div>
+      </Show>
+
+      <Show when={searchError()}>
+        <p class="diff-apply-error">{searchError()}</p>
+      </Show>
+
       <Show when={error()}>
         <p class="diff-apply-error">{error()}</p>
       </Show>
-      <Show when={props.hasUncommittedChanges}>
-        <button class="history-uncommitted-entry" onClick={props.onSelectUncommitted}>
-          <span class="history-sha">●</span>
-          <span class="history-subject">Uncommitted changes</span>
-        </button>
-      </Show>
-      <div
-        class="history-scroll"
-        ref={containerEl}
-        onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
-      >
-        <div class="history-spacer" style={{ height: `${totalCount() * ROW_HEIGHT}px` }}>
-          <canvas class="history-graph-canvas" ref={canvasEl} style={{ width: `${GRAPH_WIDTH}px` }} />
-          <For each={rowsToRender()}>
-            {(row) => (
-              <button
-                class="history-row"
-                classList={{
-                  "history-row-selected": row.commit?.sha === selectedSha(),
-                  "history-row-compare": row.commit?.sha === compareSha(),
-                }}
-                style={{ transform: `translateY(${row.index * ROW_HEIGHT}px)`, "padding-left": `${GRAPH_WIDTH}px` }}
-                onClick={(e) => row.commit && onRowClick(e, row.commit.sha)}
-              >
-                <Show when={row.commit} fallback={<span class="text-muted">Loading…</span>}>
-                  {(commit) => (
-                    <>
-                      <span class="history-sha">{commit().sha.slice(0, 7)}</span>
-                      <span class="history-subject">{commit().subject}</span>
-                      <Show when={commit().rename_from}>
-                        <span class="badge badge-rename" title={`Renamed from ${commit().rename_from}`}>
-                          renamed from {commit().rename_from}
-                        </span>
-                      </Show>
-                      <span class="history-author">{commit().author_name}</span>
-                    </>
-                  )}
-                </Show>
+
+      <Show
+        when={searchResults()}
+        fallback={
+          <>
+            <Show when={props.hasUncommittedChanges}>
+              <button class="history-uncommitted-entry" onClick={props.onSelectUncommitted}>
+                <span class="history-sha">●</span>
+                <span class="history-subject">Uncommitted changes</span>
               </button>
-            )}
-          </For>
-        </div>
-      </div>
+            </Show>
+            <div
+              class="history-scroll"
+              ref={containerEl}
+              onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+            >
+              <div class="history-spacer" style={{ height: `${totalCount() * ROW_HEIGHT}px` }}>
+                <canvas class="history-graph-canvas" ref={canvasEl} style={{ width: `${GRAPH_WIDTH}px` }} />
+                <For each={rowsToRender()}>
+                  {(row) => (
+                    <button
+                      class="history-row"
+                      classList={{
+                        "history-row-selected": row.commit?.sha === selectedSha(),
+                        "history-row-compare": row.commit?.sha === compareSha(),
+                      }}
+                      style={{ transform: `translateY(${row.index * ROW_HEIGHT}px)`, "padding-left": `${GRAPH_WIDTH}px` }}
+                      onClick={(e) => row.commit && onRowClick(e, row.commit.sha)}
+                    >
+                      <Show when={row.commit} fallback={<span class="text-muted">Loading…</span>}>
+                        {(commit) => (
+                          <>
+                            <span class="history-sha">{commit().sha.slice(0, 7)}</span>
+                            <span class="history-subject">{commit().subject}</span>
+                            <Show when={commit().rename_from}>
+                              <span class="badge badge-rename" title={`Renamed from ${commit().rename_from}`}>
+                                renamed from {commit().rename_from}
+                              </span>
+                            </Show>
+                            <span class="history-author">{commit().author_name}</span>
+                          </>
+                        )}
+                      </Show>
+                    </button>
+                  )}
+                </For>
+              </div>
+            </div>
+          </>
+        }
+      >
+        {(res) => (
+          <div class="history-search-results">
+            <div class="history-search-status">
+              <span>
+                Found {res().commits.length} commits
+                {res().truncated ? " (truncated at limit)" : ""}
+              </span>
+              <Show when={res().truncated}>
+                <button
+                  class="working-copy-action"
+                  disabled={isSearching()}
+                  onClick={() => void executeSearch(true)}
+                >
+                  {isSearching() ? "Loading…" : "Load more"}
+                </button>
+              </Show>
+            </div>
+            <Show when={res().commits.length === 0}>
+              <p class="text-muted">No commits match the search criteria.</p>
+            </Show>
+            <div class="history-search-results-list">
+              <For each={res().commits}>
+                {(commit) => (
+                  <button
+                    class="history-search-row"
+                    classList={{
+                      "history-search-row-selected": commit.sha === selectedSha(),
+                      "history-row-compare": commit.sha === compareSha(),
+                    }}
+                    onClick={(e) => onRowClick(e, commit.sha)}
+                  >
+                    <span class="history-sha">{commit.sha.slice(0, 7)}</span>
+                    <Show when={commit.rename_from}>
+                      <span class="badge badge-rename" title={`Renamed from ${commit.rename_from}`}>
+                        renamed from {commit.rename_from}
+                      </span>
+                    </Show>
+                    <span class="history-subject">{commit.subject}</span>
+                    <span class="history-author">{commit.author_name}</span>
+                    <span class="history-date">{commit.author_date.slice(0, 10)}</span>
+                  </button>
+                )}
+              </For>
+            </div>
+          </div>
+        )}
+      </Show>
 
       <Show when={historicalFile()}>
         {(hf) => (

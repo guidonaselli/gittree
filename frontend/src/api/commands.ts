@@ -233,6 +233,34 @@ export function getHistoryCount(root: string, scope: HistoryScope): Promise<numb
   return invoke<number>("get_history_count", { root, scope });
 }
 
+export type ContentSearchMode = "Pickaxe" | "Regex";
+
+export interface HistorySearchOptions {
+  scope?: HistoryScope;
+  message?: string;
+  author?: string;
+  path?: string;
+  since?: string;
+  until?: string;
+  content_query?: string;
+  content_mode?: ContentSearchMode;
+  skip?: number;
+  limit?: number;
+}
+
+export interface HistorySearchResult {
+  commits: CommitSummary[];
+  truncated: boolean;
+}
+
+export function searchHistory(root: string, options: HistorySearchOptions): Promise<HistorySearchResult> {
+  return invoke<HistorySearchResult>("search_history", { root, options });
+}
+
+export function cancelHistorySearch(): Promise<void> {
+  return invoke<void>("cancel_history_search");
+}
+
 export interface GraphRow {
   sha: string;
   parents: string[];
