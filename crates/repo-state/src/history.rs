@@ -12,7 +12,7 @@ pub enum HistoryScope {
     Path(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CommitSummary {
     pub sha: String,
     pub parents: Vec<String>,
@@ -20,6 +20,10 @@ pub struct CommitSummary {
     pub author_email: String,
     pub author_date: String,
     pub subject: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rename_from: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path_at_commit: Option<String>,
 }
 
 const FIELD_SEP: char = '\u{1f}';
@@ -47,7 +51,57 @@ fn parse_record(record: &str) -> Option<CommitSummary> {
         author_email,
         author_date,
         subject,
+        rename_from: None,
+        path_at_commit: None,
     })
+}
+
+fn parse_path_history(stdout: &str) -> Vec<CommitSummary> {
+    let tokens: Vec<&str> = stdout.split('\0').filter(|s| !s.is_empty()).collect();
+    let mut summaries = Vec::new();
+    let mut i = 0;
+    while i < tokens.len() {
+        let token = tokens[i];
+        if !token.contains(FIELD_SEP) {
+            i += 1;
+            continue;
+        }
+        let Some(mut summary) = parse_record(token) else {
+            i += 1;
+            continue;
+        };
+        i += 1;
+        let mut rename_from = None;
+        let mut path_at_commit = None;
+        while i < tokens.len() && !tokens[i].contains(FIELD_SEP) {
+            let status_raw = tokens[i].trim();
+            i += 1;
+            if status_raw.starts_with('R') || status_raw.starts_with('C') {
+                if i < tokens.len() {
+                    let old_p = tokens[i];
+                    i += 1;
+                    if i < tokens.len() {
+                        let new_p = tokens[i];
+                        i += 1;
+                        rename_from = Some(old_p.to_string());
+                        path_at_commit = Some(new_p.to_string());
+                    }
+                }
+            } else if !status_raw.is_empty() {
+                if i < tokens.len() {
+                    let p = tokens[i];
+                    i += 1;
+                    if path_at_commit.is_none() {
+                        path_at_commit = Some(p.to_string());
+                    }
+                }
+            }
+        }
+        summary.rename_from = rename_from;
+        summary.path_at_commit = path_at_commit;
+        summaries.push(summary);
+    }
+    summaries
 }
 
 /// Fetches one page of history. Only `limit` commits are ever held in
@@ -59,20 +113,48 @@ pub async fn query_history_page(
     skip: usize,
     limit: usize,
 ) -> Result<Vec<CommitSummary>, String> {
+    if let HistoryScope::Path(path) = scope {
+        // With --follow, git has a bug where --skip causes the traversal to fail or yield empty.
+        // Fetch up to skip + limit and slice in memory.
+        let max_count = skip.saturating_add(limit);
+        let args = vec![
+            "log".to_string(),
+            "--date-order".to_string(),
+            "--follow".to_string(),
+            "--name-status".to_string(),
+            "-M".to_string(),
+            format!("--max-count={max_count}"),
+            format!("--format=%H{FIELD_SEP}%P{FIELD_SEP}%an{FIELD_SEP}%ae{FIELD_SEP}%aI{FIELD_SEP}%s"),
+            "-z".to_string(),
+            "--".to_string(),
+            path.clone(),
+        ];
+        let result = layer
+            .run(
+                GitCall::new(root, args),
+                Intent::Read,
+                CancellationToken::new(),
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        if !result.ok() {
+            return Err(result.stderr.trim().to_string());
+        }
+        let all = parse_path_history(&result.stdout_utf8_lossy());
+        return Ok(all.into_iter().skip(skip).take(limit).collect());
+    }
+
     let mut args = vec!["log".to_string(), "--date-order".to_string()];
     match scope {
-        HistoryScope::CurrentBranch | HistoryScope::Path(_) => {}
+        HistoryScope::CurrentBranch => {}
         HistoryScope::AllBranches => args.push("--branches".to_string()),
         HistoryScope::AllRefs => args.push("--all".to_string()),
+        HistoryScope::Path(_) => unreachable!(),
     }
     args.push(format!("--skip={skip}"));
     args.push(format!("--max-count={limit}"));
-    args.push("--format=%H\u{1f}%P\u{1f}%an\u{1f}%ae\u{1f}%aI\u{1f}%s".to_string());
+    args.push(format!("--format=%H{FIELD_SEP}%P{FIELD_SEP}%an{FIELD_SEP}%ae{FIELD_SEP}%aI{FIELD_SEP}%s"));
     args.push("-z".to_string());
-    if let HistoryScope::Path(path) = scope {
-        args.push("--".to_string());
-        args.push(path.clone());
-    }
 
     let result = layer
         .run(
@@ -100,16 +182,38 @@ pub async fn query_history_count(
     root: &Path,
     scope: &HistoryScope,
 ) -> Result<usize, String> {
+    if let HistoryScope::Path(path) = scope {
+        let args = vec![
+            "log".to_string(),
+            "--follow".to_string(),
+            "--format=%H".to_string(),
+            "--".to_string(),
+            path.clone(),
+        ];
+        let result = layer
+            .run(
+                GitCall::new(root, args),
+                Intent::Read,
+                CancellationToken::new(),
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        if !result.ok() {
+            return Err(result.stderr.trim().to_string());
+        }
+        return Ok(result
+            .stdout_utf8_lossy()
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .count());
+    }
+
     let mut args = vec!["rev-list".to_string(), "--count".to_string()];
     match scope {
         HistoryScope::CurrentBranch => args.push("HEAD".to_string()),
         HistoryScope::AllBranches => args.push("--branches".to_string()),
         HistoryScope::AllRefs => args.push("--all".to_string()),
-        HistoryScope::Path(_) => args.push("HEAD".to_string()),
-    }
-    if let HistoryScope::Path(path) = scope {
-        args.push("--".to_string());
-        args.push(path.clone());
+        HistoryScope::Path(_) => unreachable!(),
     }
 
     let result = layer
@@ -128,6 +232,47 @@ pub async fn query_history_count(
         .trim()
         .parse::<usize>()
         .map_err(|e| e.to_string())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct HistoricalFile {
+    pub content: String,
+    pub is_binary: bool,
+    pub size: usize,
+}
+
+pub async fn query_file_at_revision(
+    layer: &ProcessLayer,
+    root: &Path,
+    rev: &str,
+    path: &str,
+) -> Result<HistoricalFile, String> {
+    let target = format!("{rev}:{}", path.trim_start_matches('/'));
+    let result = layer
+        .run(
+            GitCall::new(root, vec!["show".to_string(), target]),
+            Intent::Read,
+            CancellationToken::new(),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    if !result.ok() {
+        return Err(format!("git show failed: {}", result.stderr.trim()));
+    }
+    let bytes = result.stdout;
+    let size = bytes.len();
+    let is_binary = bytes.contains(&0);
+    let content = if is_binary {
+        use base64::Engine;
+        base64::engine::general_purpose::STANDARD.encode(&bytes)
+    } else {
+        String::from_utf8_lossy(&bytes).to_string()
+    };
+    Ok(HistoricalFile {
+        content,
+        is_binary,
+        size,
+    })
 }
 
 #[cfg(test)]
@@ -296,5 +441,107 @@ mod tests {
 
         assert_eq!(current_count, 1);
         assert_eq!(all_count, 2);
+    }
+
+    #[tokio::test]
+    async fn file_history_follows_renames_across_multiple_renames_and_marks_each_rename_point() {
+        let dir = init_repo();
+        commit(dir.path(), "orig.txt", "initial");
+        git(dir.path(), &["mv", "orig.txt", "renamed1.txt"]);
+        git(dir.path(), &["commit", "-q", "-m", "rename1"]);
+        std::fs::write(dir.path().join("renamed1.txt"), "edited content").unwrap();
+        git(dir.path(), &["add", "-A"]);
+        git(dir.path(), &["commit", "-q", "-m", "edit"]);
+        git(dir.path(), &["mv", "renamed1.txt", "final.txt"]);
+        git(dir.path(), &["commit", "-q", "-m", "rename2"]);
+
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+        let commits = page(
+            &layer,
+            dir.path(),
+            &HistoryScope::Path("final.txt".to_string()),
+            0,
+            10,
+        )
+        .await;
+
+        assert_eq!(commits.len(), 4);
+        let subjects: Vec<&str> = commits.iter().map(|c| c.subject.as_str()).collect();
+        assert_eq!(subjects, vec!["rename2", "edit", "rename1", "initial"]);
+
+        // Rename points are marked
+        assert_eq!(commits[0].rename_from.as_deref(), Some("renamed1.txt"));
+        assert_eq!(commits[0].path_at_commit.as_deref(), Some("final.txt"));
+
+        assert_eq!(commits[1].rename_from, None);
+        assert_eq!(commits[1].path_at_commit.as_deref(), Some("renamed1.txt"));
+
+        assert_eq!(commits[2].rename_from.as_deref(), Some("orig.txt"));
+        assert_eq!(commits[2].path_at_commit.as_deref(), Some("renamed1.txt"));
+
+        assert_eq!(commits[3].rename_from, None);
+        assert_eq!(commits[3].path_at_commit.as_deref(), Some("orig.txt"));
+
+        // Count also spans the whole rename history
+        let count = query_history_count(
+            &layer,
+            dir.path(),
+            &HistoryScope::Path("final.txt".to_string()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(count, 4);
+    }
+
+    #[tokio::test]
+    async fn directory_history_returns_commits_touching_paths_in_that_directory() {
+        let dir = init_repo();
+        std::fs::create_dir_all(dir.path().join("subdir")).unwrap();
+        commit(dir.path(), "subdir/a.txt", "touch subdir a");
+        commit(dir.path(), "other.txt", "touch other");
+        commit(dir.path(), "subdir/b.txt", "touch subdir b");
+
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+        let commits = page(
+            &layer,
+            dir.path(),
+            &HistoryScope::Path("subdir".to_string()),
+            0,
+            10,
+        )
+        .await;
+
+        assert_eq!(commits.len(), 2);
+        let subjects: Vec<&str> = commits.iter().map(|c| c.subject.as_str()).collect();
+        assert_eq!(subjects, vec!["touch subdir b", "touch subdir a"]);
+    }
+
+    #[tokio::test]
+    async fn query_file_at_revision_reads_historical_content_and_detects_binary() {
+        let dir = init_repo();
+        commit(dir.path(), "note.txt", "version 1");
+        commit(dir.path(), "note.txt", "version 2");
+
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+        let commits = page(&layer, dir.path(), &HistoryScope::CurrentBranch, 0, 10).await;
+        let v1_sha = &commits[1].sha;
+
+        let v1_file = query_file_at_revision(&layer, dir.path(), v1_sha, "note.txt")
+            .await
+            .unwrap();
+        assert!(!v1_file.is_binary);
+        assert_eq!(v1_file.content, "version 1");
+        assert_eq!(v1_file.size, 9);
+
+        // Binary file with null byte
+        std::fs::write(dir.path().join("bin.dat"), [0u8, 1, 2, 3]).unwrap();
+        git(dir.path(), &["add", "-A"]);
+        git(dir.path(), &["commit", "-q", "-m", "add binary"]);
+
+        let bin_file = query_file_at_revision(&layer, dir.path(), "HEAD", "bin.dat")
+            .await
+            .unwrap();
+        assert!(bin_file.is_binary);
+        assert_eq!(bin_file.size, 4);
     }
 }

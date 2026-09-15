@@ -57,7 +57,7 @@ pub enum WatchHandle {
     // underlying inotify watch. Never read otherwise.
     #[allow(dead_code)]
     Native(notify_debouncer_mini::Debouncer<notify_debouncer_mini::notify::RecommendedWatcher>),
-    Polling(tokio::task::JoinHandle<()>),
+    Polling(tauri::async_runtime::JoinHandle<()>),
 }
 
 #[derive(Default)]
@@ -165,7 +165,7 @@ pub fn start_desktop_theme_watch<R: Runtime>(
 }
 
 fn spawn_poller<R: Runtime>(app: AppHandle<R>, root: PathBuf) -> WatchHandle {
-    let task = tokio::spawn(async move {
+    let task = tauri::async_runtime::spawn(async move {
         let git_dir = root.join(".git");
         let mut last_signature = directory_signature(&git_dir);
         loop {

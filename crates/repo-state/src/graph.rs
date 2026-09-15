@@ -38,9 +38,12 @@ async fn fetch_all_commits(
 ) -> Result<Vec<RawCommit>, String> {
     let mut args = vec!["log".to_string(), "--date-order".to_string()];
     match scope {
-        HistoryScope::CurrentBranch | HistoryScope::Path(_) => {}
+        HistoryScope::CurrentBranch => {}
         HistoryScope::AllBranches => args.push("--branches".to_string()),
         HistoryScope::AllRefs => args.push("--all".to_string()),
+        HistoryScope::Path(_) => {
+            args.push("--follow".to_string());
+        }
     }
     args.push("--format=%H %P".to_string());
     args.push("-z".to_string());

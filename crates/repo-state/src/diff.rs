@@ -37,6 +37,8 @@ pub enum NonTextualDiff {
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct FileDiff {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
     pub header_lines: Vec<String>,
     pub hunks: Vec<Hunk>,
     pub is_binary: bool,
@@ -180,6 +182,20 @@ fn parse_hunk_header(line: &str) -> Option<(u32, u32, u32, u32)> {
     Some((old_start, old_lines, new_start, new_lines))
 }
 
+fn extract_path_from_header(header_lines: &[String]) -> Option<String> {
+    for line in header_lines {
+        if let Some(rest) = line.strip_prefix("diff --git ") {
+            if let Some((_, b)) = rest.split_once(" b/") {
+                return Some(b.to_string());
+            }
+        }
+        if let Some(p) = line.strip_prefix("+++ b/") {
+            return Some(p.to_string());
+        }
+    }
+    None
+}
+
 /// Parses `git diff`/`git diff --cached` output already scoped to one path.
 pub fn parse_file_diff(text: &str) -> Option<FileDiff> {
     if text.is_empty() {
@@ -218,12 +234,35 @@ pub fn parse_file_diff(text: &str) -> Option<FileDiff> {
     }
 
     let non_textual = classify_non_textual(&header_lines, &hunks, is_binary);
+    let path = extract_path_from_header(&header_lines);
     Some(FileDiff {
+        path,
         header_lines,
         hunks,
         is_binary,
         non_textual,
     })
+}
+
+/// Parses a multi-file unified git diff output into individual FileDiff items.
+pub fn parse_multi_file_diff(text: &str) -> Vec<FileDiff> {
+    let mut files = Vec::new();
+    let mut current_lines = Vec::new();
+    for line in text.lines() {
+        if line.starts_with("diff --git ") && !current_lines.is_empty() {
+            if let Some(f) = parse_file_diff(&current_lines.join("\n")) {
+                files.push(f);
+            }
+            current_lines.clear();
+        }
+        current_lines.push(line);
+    }
+    if !current_lines.is_empty() {
+        if let Some(f) = parse_file_diff(&current_lines.join("\n")) {
+            files.push(f);
+        }
+    }
+    files
 }
 
 /// View-only diff options; the staging path never applies these.
@@ -298,6 +337,78 @@ pub async fn diff_file_with_options(
         }
     }
     Ok(file)
+}
+
+/// Diffs between two arbitrary revisions, optionally scoped to paths (supporting renames across revisions).
+pub async fn diff_revisions(
+    layer: &ProcessLayer,
+    root: &Path,
+    old_rev: &str,
+    old_path: Option<&str>,
+    new_rev: &str,
+    new_path: Option<&str>,
+    options: &DiffViewOptions,
+) -> Result<Vec<FileDiff>, String> {
+    let mut args = vec!["diff".to_string()];
+    if let Some(context) = options.context_lines {
+        args.push(format!("-U{context}"));
+    }
+    if options.ignore_whitespace {
+        args.push("--ignore-all-space".to_string());
+    }
+
+    match (old_path, new_path) {
+        (Some(op), Some(np)) if op != np => {
+            args.push(format!("{old_rev}:{}", op.trim_start_matches('/')));
+            args.push(format!("{new_rev}:{}", np.trim_start_matches('/')));
+        }
+        (Some(op), Some(_np)) => {
+            args.push(old_rev.to_string());
+            args.push(new_rev.to_string());
+            args.push("--".to_string());
+            args.push(op.trim_start_matches('/').to_string());
+        }
+        (Some(p), None) | (None, Some(p)) => {
+            args.push(old_rev.to_string());
+            args.push(new_rev.to_string());
+            args.push("--".to_string());
+            args.push(p.trim_start_matches('/').to_string());
+        }
+        (None, None) => {
+            args.push(old_rev.to_string());
+            args.push(new_rev.to_string());
+        }
+    }
+
+    let result = layer
+        .run(
+            GitCall::new(root, args),
+            Intent::Read,
+            CancellationToken::new(),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    if !result.ok() {
+        return Err(format!("git diff failed: {}", result.stderr.trim()));
+    }
+
+    let mut files = parse_multi_file_diff(&result.stdout_utf8_lossy());
+    for f in &mut files {
+        if let Some(NonTextualDiff::Binary {
+            old_sha, new_sha, ..
+        }) = f.non_textual.clone()
+        {
+            let old_size = blob_size(layer, root, old_sha.clone()).await;
+            let new_size = blob_size(layer, root, new_sha.clone()).await;
+            f.non_textual = Some(NonTextualDiff::Binary {
+                old_size,
+                new_size,
+                old_sha,
+                new_sha,
+            });
+        }
+    }
+    Ok(files)
 }
 
 /// Reads a blob's raw bytes and base64-encodes them, for previewing an image-like binary side.
@@ -1025,5 +1136,158 @@ mod tests {
         assert!(file.hunks[0].lines.iter().any(|l| l == " line20"));
         assert!(file.hunks[0].lines.iter().any(|l| l == "-line10"));
         assert!(file.hunks[0].lines.iter().any(|l| l == "+line10 changed"));
+    }
+
+    #[tokio::test]
+    async fn diff_revisions_diffs_arbitrary_commits_including_across_renames() {
+        let dir = init_repo();
+        std::fs::write(dir.path().join("orig.txt"), "hello\nworld\n").unwrap();
+        Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-q", "-m", "initial"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+        let sha1 = String::from_utf8(
+            Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(dir.path())
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap()
+        .trim()
+        .to_string();
+
+        Command::new("git")
+            .args(["mv", "orig.txt", "renamed.txt"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+        std::fs::write(dir.path().join("renamed.txt"), "hello\nworld\nmore lines\n").unwrap();
+        Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-q", "-m", "rename and edit"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+        let sha2 = String::from_utf8(
+            Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(dir.path())
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap()
+        .trim()
+        .to_string();
+
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+        let diff = diff_revisions(
+            &layer,
+            dir.path(),
+            &sha1,
+            Some("orig.txt"),
+            &sha2,
+            Some("renamed.txt"),
+            &DiffViewOptions::default(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(diff.len(), 1);
+        assert_eq!(diff[0].hunks.len(), 1);
+        assert!(diff[0].hunks[0].lines.iter().any(|l| l == "+more lines"));
+    }
+
+    #[tokio::test]
+    async fn diff_revisions_with_whitespace_option_suppresses_whitespace_diff() {
+        let dir = init_repo();
+        std::fs::write(dir.path().join("code.rs"), "fn test() {\n    1\n}\n").unwrap();
+        Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-q", "-m", "c1"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+        let sha1 = String::from_utf8(
+            Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(dir.path())
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap()
+        .trim()
+        .to_string();
+
+        std::fs::write(dir.path().join("code.rs"), "fn test() {\n        1\n}\n").unwrap();
+        Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-q", "-m", "c2"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+        let sha2 = String::from_utf8(
+            Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(dir.path())
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap()
+        .trim()
+        .to_string();
+
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+        let diff_ignored = diff_revisions(
+            &layer,
+            dir.path(),
+            &sha1,
+            Some("code.rs"),
+            &sha2,
+            Some("code.rs"),
+            &DiffViewOptions {
+                context_lines: None,
+                ignore_whitespace: true,
+            },
+        )
+        .await
+        .unwrap();
+        assert!(diff_ignored.is_empty());
+
+        let diff_default = diff_revisions(
+            &layer,
+            dir.path(),
+            &sha1,
+            Some("code.rs"),
+            &sha2,
+            Some("code.rs"),
+            &DiffViewOptions::default(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(diff_default.len(), 1);
+        assert_eq!(diff_default[0].hunks.len(), 1);
     }
 }

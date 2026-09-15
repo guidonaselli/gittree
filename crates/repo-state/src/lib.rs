@@ -22,13 +22,16 @@ pub use blame::{query_blame, BlameLine, BlameOptions};
 pub use commit::{commit, CommitOptions};
 pub use commit_detail::{query_commit_detail, CommitDetail, FileStat, SignatureState};
 pub use diff::{
-    diff_file, diff_file_with_options, read_blob_base64, read_working_tree_file_base64,
-    stage_hunks, stage_lines, unstage_hunks, unstage_lines, DiffViewOptions, FileDiff, Hunk,
-    NonTextualDiff,
+    diff_file, diff_file_with_options, diff_revisions, read_blob_base64,
+    read_working_tree_file_base64, stage_hunks, stage_lines, unstage_hunks, unstage_lines,
+    DiffViewOptions, FileDiff, Hunk, NonTextualDiff,
 };
 pub use discard::{delete_untracked_paths, discard_tracked_paths, stash_paths};
 pub use graph::{query_history_graph, GraphResult, GraphRow, LANE_BUDGET};
-pub use history::{query_history_count, query_history_page, CommitSummary, HistoryScope};
+pub use history::{
+    query_file_at_revision, query_history_count, query_history_page, CommitSummary, HistoricalFile,
+    HistoryScope,
+};
 pub use message_template::{commit_message_template, CommitMessageTemplate};
 pub use resolve::{init_repository, resolve_open, OpenOutcome};
 pub use resolved::Resolved;
