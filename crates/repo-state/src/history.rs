@@ -3,7 +3,7 @@ use std::path::Path;
 use git_process::{GitCall, Intent, ProcessLayer};
 use tokio_util::sync::CancellationToken;
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "kind", content = "path")]
 pub enum HistoryScope {
     CurrentBranch,
@@ -275,6 +275,138 @@ pub async fn query_file_at_revision(
     })
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum ContentSearchMode {
+    Pickaxe,
+    Regex,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
+pub struct HistorySearchOptions {
+    pub scope: Option<HistoryScope>,
+    pub message: Option<String>,
+    pub author: Option<String>,
+    pub path: Option<String>,
+    pub since: Option<String>,
+    pub until: Option<String>,
+    pub content_query: Option<String>,
+    pub content_mode: Option<ContentSearchMode>,
+    pub skip: Option<usize>,
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct HistorySearchResult {
+    pub commits: Vec<CommitSummary>,
+    pub truncated: bool,
+}
+
+pub async fn search_history(
+    layer: &ProcessLayer,
+    root: &Path,
+    options: &HistorySearchOptions,
+    cancellation_token: CancellationToken,
+) -> Result<HistorySearchResult, String> {
+    let limit = options.limit.unwrap_or(100);
+    let skip = options.skip.unwrap_or(0);
+    let fetch_count = limit.saturating_add(1);
+
+    let mut args = vec!["log".to_string(), "--date-order".to_string()];
+
+    let scope = options.scope.as_ref().unwrap_or(&HistoryScope::CurrentBranch);
+    match scope {
+        HistoryScope::CurrentBranch => {}
+        HistoryScope::AllBranches => args.push("--branches".to_string()),
+        HistoryScope::AllRefs => args.push("--all".to_string()),
+        HistoryScope::Path(_) => {}
+    }
+
+    if let Some(msg) = &options.message {
+        let trimmed = msg.trim();
+        if !trimmed.is_empty() {
+            args.push(format!("--grep={trimmed}"));
+            args.push("-i".to_string());
+        }
+    }
+
+    if let Some(author) = &options.author {
+        let trimmed = author.trim();
+        if !trimmed.is_empty() {
+            args.push(format!("--author={trimmed}"));
+            args.push("-i".to_string());
+        }
+    }
+
+    if let Some(since) = &options.since {
+        let trimmed = since.trim();
+        if !trimmed.is_empty() {
+            args.push(format!("--since={trimmed}"));
+        }
+    }
+
+    if let Some(until) = &options.until {
+        let trimmed = until.trim();
+        if !trimmed.is_empty() {
+            args.push(format!("--until={trimmed}"));
+        }
+    }
+
+    if let Some(content) = &options.content_query {
+        let trimmed = content.trim();
+        if !trimmed.is_empty() {
+            match options.content_mode.unwrap_or(ContentSearchMode::Pickaxe) {
+                ContentSearchMode::Pickaxe => {
+                    args.push(format!("-S{trimmed}"));
+                }
+                ContentSearchMode::Regex => {
+                    args.push(format!("-G{trimmed}"));
+                }
+            }
+            args.push("-i".to_string());
+        }
+    }
+
+    if skip > 0 {
+        args.push(format!("--skip={skip}"));
+    }
+    args.push(format!("--max-count={fetch_count}"));
+    args.push(format!("--format=%H{FIELD_SEP}%P{FIELD_SEP}%an{FIELD_SEP}%ae{FIELD_SEP}%aI{FIELD_SEP}%s"));
+    args.push("-z".to_string());
+
+    let path_filter = match (&options.path, scope) {
+        (Some(p), _) if !p.trim().is_empty() => Some(p.trim()),
+        (_, HistoryScope::Path(p)) if !p.trim().is_empty() => Some(p.trim()),
+        _ => None,
+    };
+
+    if let Some(p) = path_filter {
+        args.push("--".to_string());
+        args.push(p.to_string());
+    }
+
+    let result = layer
+        .run(GitCall::new(root, args), Intent::Read, cancellation_token)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !result.ok() {
+        return Err(result.stderr.trim().to_string());
+    }
+
+    let mut commits: Vec<CommitSummary> = result
+        .stdout_utf8_lossy()
+        .split('\0')
+        .filter_map(parse_record)
+        .collect();
+
+    let truncated = commits.len() > limit;
+    if truncated {
+        commits.truncate(limit);
+    }
+
+    Ok(HistorySearchResult { commits, truncated })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -299,7 +431,11 @@ mod tests {
     }
 
     fn commit(dir: &Path, name: &str, message: &str) {
-        std::fs::write(dir.join(name), message).unwrap();
+        let full = dir.join(name);
+        if let Some(parent) = full.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(&full, message).unwrap();
         git(dir, &["add", "-A"]);
         git(dir, &["commit", "-q", "-m", message]);
     }
@@ -543,5 +679,266 @@ mod tests {
             .unwrap();
         assert!(bin_file.is_binary);
         assert_eq!(bin_file.size, 4);
+    }
+
+    #[tokio::test]
+    async fn search_history_by_message_and_author() {
+        let dir = init_repo();
+        git(dir.path(), &["config", "user.name", "Alice"]);
+        git(dir.path(), &["config", "user.email", "alice@example.com"]);
+        commit(dir.path(), "f1.txt", "fix: resolve memory leak");
+
+        git(dir.path(), &["config", "user.name", "Bob"]);
+        git(dir.path(), &["config", "user.email", "bob@example.com"]);
+        commit(dir.path(), "f2.txt", "feat: add user authentication");
+
+        git(dir.path(), &["config", "user.name", "Alice"]);
+        git(dir.path(), &["config", "user.email", "alice@example.com"]);
+        commit(dir.path(), "f3.txt", "docs: update readme");
+
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+
+        // Search by message (case-insensitive)
+        let res_msg = search_history(
+            &layer,
+            dir.path(),
+            &HistorySearchOptions {
+                message: Some("AUTHENTICATION".to_string()),
+                ..Default::default()
+            },
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(res_msg.commits.len(), 1);
+        assert_eq!(res_msg.commits[0].subject, "feat: add user authentication");
+        assert!(!res_msg.truncated);
+
+        // Search by author
+        let res_author = search_history(
+            &layer,
+            dir.path(),
+            &HistorySearchOptions {
+                author: Some("Bob".to_string()),
+                ..Default::default()
+            },
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(res_author.commits.len(), 1);
+        assert_eq!(res_author.commits[0].author_name, "Bob");
+
+        // Search by Alice
+        let res_alice = search_history(
+            &layer,
+            dir.path(),
+            &HistorySearchOptions {
+                author: Some("Alice".to_string()),
+                ..Default::default()
+            },
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(res_alice.commits.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn search_history_by_path_and_date_range() {
+        let dir = init_repo();
+        commit(dir.path(), "src/main.rs", "commit 1 in src");
+        commit(dir.path(), "docs/readme.md", "commit 2 in docs");
+        commit(dir.path(), "src/lib.rs", "commit 3 in src");
+
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+
+        // Filter by path
+        let res_path = search_history(
+            &layer,
+            dir.path(),
+            &HistorySearchOptions {
+                path: Some("src".to_string()),
+                ..Default::default()
+            },
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(res_path.commits.len(), 2);
+        let subjects: Vec<&str> = res_path.commits.iter().map(|c| c.subject.as_str()).collect();
+        assert_eq!(subjects, vec!["commit 3 in src", "commit 1 in src"]);
+
+        // Filter by date range (1 day ago to tomorrow)
+        let res_date = search_history(
+            &layer,
+            dir.path(),
+            &HistorySearchOptions {
+                since: Some("1 hour ago".to_string()),
+                ..Default::default()
+            },
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(res_date.commits.len(), 3);
+
+        // In the future: 0 commits
+        let res_future = search_history(
+            &layer,
+            dir.path(),
+            &HistorySearchOptions {
+                since: Some("2099-01-01".to_string()),
+                ..Default::default()
+            },
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(res_future.commits.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn search_history_by_content_pickaxe_finds_introduction_and_removal() {
+        let dir = init_repo();
+        // Commit 1 introduces token
+        std::fs::write(dir.path().join("token.txt"), "hello SECRET_TARGET world").unwrap();
+        git(dir.path(), &["add", "-A"]);
+        git(dir.path(), &["commit", "-q", "-m", "introduce token"]);
+
+        // Commit 2 touches unrelated file
+        commit(dir.path(), "other.txt", "unrelated change");
+
+        // Commit 3 removes token
+        std::fs::write(dir.path().join("token.txt"), "hello world").unwrap();
+        git(dir.path(), &["add", "-A"]);
+        git(dir.path(), &["commit", "-q", "-m", "remove token"]);
+
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+
+        let res = search_history(
+            &layer,
+            dir.path(),
+            &HistorySearchOptions {
+                content_query: Some("SECRET_TARGET".to_string()),
+                content_mode: Some(ContentSearchMode::Pickaxe),
+                ..Default::default()
+            },
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+
+        // Must find both introduction and removal!
+        assert_eq!(res.commits.len(), 2);
+        let subjects: Vec<&str> = res.commits.iter().map(|c| c.subject.as_str()).collect();
+        assert_eq!(subjects, vec!["remove token", "introduce token"]);
+    }
+
+    #[tokio::test]
+    async fn search_history_by_content_regex() {
+        let dir = init_repo();
+        std::fs::write(dir.path().join("config.rs"), "const TIMEOUT_SECS: u64 = 30;\n").unwrap();
+        git(dir.path(), &["add", "-A"]);
+        git(dir.path(), &["commit", "-q", "-m", "add timeout"]);
+
+        std::fs::write(dir.path().join("config.rs"), "const TIMEOUT_SECS: u64 = 30;\nconst MAX_RETRIES: u32 = 5;\n").unwrap();
+        git(dir.path(), &["add", "-A"]);
+        git(dir.path(), &["commit", "-q", "-m", "add retries"]);
+
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+
+        let res = search_history(
+            &layer,
+            dir.path(),
+            &HistorySearchOptions {
+                content_query: Some("MAX_[A-Z]+".to_string()),
+                content_mode: Some(ContentSearchMode::Regex),
+                ..Default::default()
+            },
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(res.commits.len(), 1);
+        assert_eq!(res.commits[0].subject, "add retries");
+    }
+
+    #[tokio::test]
+    async fn search_history_truncation_is_reported_when_results_exceed_limit() {
+        let dir = init_repo();
+        for i in 1..=5 {
+            commit(dir.path(), "file.txt", &format!("msg {i}"));
+        }
+
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+
+        // Limit 3 with 5 matching commits
+        let res_trunc = search_history(
+            &layer,
+            dir.path(),
+            &HistorySearchOptions {
+                limit: Some(3),
+                ..Default::default()
+            },
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(res_trunc.commits.len(), 3);
+        assert!(res_trunc.truncated);
+
+        // Limit 10 with 5 matching commits
+        let res_all = search_history(
+            &layer,
+            dir.path(),
+            &HistorySearchOptions {
+                limit: Some(10),
+                ..Default::default()
+            },
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(res_all.commits.len(), 5);
+        assert!(!res_all.truncated);
+
+        // Pagination with skip: skip 3 take 3
+        let res_skip = search_history(
+            &layer,
+            dir.path(),
+            &HistorySearchOptions {
+                skip: Some(3),
+                limit: Some(3),
+                ..Default::default()
+            },
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(res_skip.commits.len(), 2);
+        assert!(!res_skip.truncated);
+    }
+
+    #[tokio::test]
+    async fn search_history_cancellation_aborts() {
+        let dir = init_repo();
+        commit(dir.path(), "f.txt", "test commit");
+
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+        let token = CancellationToken::new();
+        token.cancel(); // Pre-cancelled
+
+        let err = search_history(
+            &layer,
+            dir.path(),
+            &HistorySearchOptions::default(),
+            token,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.contains("cancelled"));
     }
 }

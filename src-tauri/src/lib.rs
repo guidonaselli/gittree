@@ -13,15 +13,17 @@ use repo_state::{
     diff_file_with_options, diff_revisions, discard_tracked_paths, head_is_published, query_blame,
     query_commit_detail, query_file_at_revision, query_history_count, query_history_graph,
     query_history_page, query_repository_state, query_submodule_matrix, query_working_copy_status,
-    read_blob_base64, read_working_tree_file_base64, stage_hunks, stage_lines, stage_paths,
-    stash_paths, unstage_hunks, unstage_lines, unstage_paths, BlameLine, BlameOptions,
-    CommitDetail, CommitMessageTemplate, CommitOptions, CommitSummary, DiffViewOptions, FileDiff,
-    GraphResult, HistoricalFile, HistoryScope, OpenOutcome, RepositoryState, Resolved,
-    SubmoduleState, WorkingCopyStatus,
+    read_blob_base64, read_working_tree_file_base64, stage_hunks, stage_lines,
+    stage_paths, stash_paths, unstage_hunks, unstage_lines, unstage_paths, BlameLine, BlameOptions,
+    CommitDetail, CommitMessageTemplate, CommitOptions, CommitSummary,
+    DiffViewOptions, FileDiff, GraphResult, HistoricalFile, HistoryScope, HistorySearchOptions,
+    HistorySearchResult, OpenOutcome, RepositoryState, Resolved, SubmoduleState, WorkingCopyStatus,
 };
 use serde::Serialize;
 use settings::{Bookmark, BookmarksState, Settings, SettingsLoadResult};
+use std::sync::Mutex;
 use tauri::{AppHandle, Manager, State};
+use tokio_util::sync::CancellationToken;
 use watcher::WatcherState;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
@@ -29,6 +31,9 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 pub struct AppState {
     pub process_layer: Arc<ProcessLayer>,
 }
+
+#[derive(Default)]
+pub struct SearchState(pub Mutex<Option<CancellationToken>>);
 
 /// Runs before the Tauri builder so a failed version check never produces
 /// a half-initialized window.
@@ -160,6 +165,38 @@ async fn get_file_at_revision(
     path: String,
 ) -> Result<HistoricalFile, String> {
     query_file_at_revision(&state.process_layer, &PathBuf::from(root), &rev, &path).await
+}
+
+#[tauri::command]
+async fn search_history(
+    state: State<'_, AppState>,
+    search_state: State<'_, SearchState>,
+    root: String,
+    options: HistorySearchOptions,
+) -> Result<HistorySearchResult, String> {
+    let token = CancellationToken::new();
+    {
+        let mut guard = search_state.0.lock().unwrap();
+        if let Some(prev) = guard.take() {
+            prev.cancel();
+        }
+        *guard = Some(token.clone());
+    }
+    repo_state::search_history(
+        &state.process_layer,
+        &PathBuf::from(root),
+        &options,
+        token,
+    )
+    .await
+}
+
+#[tauri::command]
+fn cancel_history_search(search_state: State<'_, SearchState>) {
+    let mut guard = search_state.0.lock().unwrap();
+    if let Some(token) = guard.take() {
+        token.cancel();
+    }
 }
 
 #[tauri::command]
@@ -523,6 +560,7 @@ pub fn run() {
         .manage(AppState { process_layer })
         .manage(BookmarksState::default())
         .manage(WatcherState::default())
+        .manage(SearchState::default())
         .invoke_handler(tauri::generate_handler![
             get_repository_state,
             get_submodule_matrix,
@@ -533,6 +571,8 @@ pub fn run() {
             get_file_diff_with_options,
             get_revision_diff,
             get_file_at_revision,
+            search_history,
+            cancel_history_search,
             get_blob_base64,
             get_working_tree_file_base64,
             get_blame,

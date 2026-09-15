@@ -29,8 +29,8 @@ pub use diff::{
 pub use discard::{delete_untracked_paths, discard_tracked_paths, stash_paths};
 pub use graph::{query_history_graph, GraphResult, GraphRow, LANE_BUDGET};
 pub use history::{
-    query_file_at_revision, query_history_count, query_history_page, CommitSummary, HistoricalFile,
-    HistoryScope,
+    query_file_at_revision, query_history_count, query_history_page, search_history, CommitSummary,
+    ContentSearchMode, HistoricalFile, HistoryScope, HistorySearchOptions, HistorySearchResult,
 };
 pub use message_template::{commit_message_template, CommitMessageTemplate};
 pub use resolve::{init_repository, resolve_open, OpenOutcome};
