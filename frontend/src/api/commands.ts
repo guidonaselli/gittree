@@ -182,6 +182,42 @@ export interface CommitSummary {
   author_email: string;
   author_date: string;
   subject: string;
+  rename_from?: string | null;
+  path_at_commit?: string | null;
+}
+
+export interface HistoricalFile {
+  content: string;
+  is_binary: boolean;
+  size: number;
+}
+
+export function getRevisionDiff(
+  root: string,
+  oldRev: string,
+  oldPath: string | null | undefined,
+  newRev: string,
+  newPath: string | null | undefined,
+  contextLines?: number,
+  ignoreWhitespace?: boolean,
+): Promise<FileDiff[]> {
+  return invoke<FileDiff[]>("get_revision_diff", {
+    root,
+    oldRev,
+    oldPath: oldPath ?? null,
+    newRev,
+    newPath: newPath ?? null,
+    contextLines: contextLines ?? null,
+    ignoreWhitespace: ignoreWhitespace ?? false,
+  });
+}
+
+export function getFileAtRevision(
+  root: string,
+  rev: string,
+  path: string,
+): Promise<HistoricalFile> {
+  return invoke<HistoricalFile>("get_file_at_revision", { root, rev, path });
 }
 
 export function getHistoryPage(

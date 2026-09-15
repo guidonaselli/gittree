@@ -151,6 +151,7 @@ export type FileDiff = {
   hunks: Hunk[];
   is_binary: boolean;
   non_textual: NonTextualDiff | null;
+  path?: string | null;
 };
 
 export function changeCodeLabel(c: ChangeCode): string {

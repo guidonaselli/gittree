@@ -217,3 +217,143 @@
 .signature-unsigned {
   color: var(--color-text-muted);
 }
+
+.badge-rename {
+  color: var(--color-warning);
+  border: var(--border-width-thin) solid var(--color-warning);
+  font-size: var(--font-size-xs);
+  margin-left: var(--space-2);
+}
+
+.history-row-compare {
+  background: var(--color-bg-subtle);
+  outline: var(--border-width-thin) dashed var(--color-focus-ring);
+}
+
+.commit-detail-file-actions {
+  display: flex;
+  gap: var(--space-1);
+  justify-content: flex-end;
+  padding: var(--space-1) 0;
+}
+
+.history-blame-container {
+  border-top: var(--border-width-thin) solid var(--color-border);
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+}
+
+.history-blame-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+.historical-file-view {
+  border-top: var(--border-width-thin) solid var(--color-border);
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+}
+
+.historical-file-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+
+.historical-file-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+.historical-file-name {
+  font-weight: bold;
+}
+
+.historical-file-rev {
+  font-family: var(--font-family-mono);
+  color: var(--color-text-muted);
+}
+
+.historical-file-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.historical-file-content {
+  border: var(--border-width-thin) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.historical-file-pre {
+  margin: 0;
+  padding: var(--space-2);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+}
+
+.historical-file-line {
+  display: flex;
+  gap: var(--space-3);
+  line-height: var(--line-height-normal);
+}
+
+.historical-file-lineno {
+  color: var(--color-text-muted);
+  user-select: none;
+  min-width: var(--space-6);
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.historical-file-text {
+  white-space: pre;
+}
+
+.historical-file-binary {
+  padding: var(--space-4);
+  text-align: center;
+}
+
+.historical-file-image {
+  max-width: 100%;
+  max-height: 40vh;
+  border-radius: var(--radius-sm);
+  image-rendering: pixelated;
+}
+
+.revision-diff-view {
+  border-top: var(--border-width-thin) solid var(--color-border);
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+}
+
+.revision-diff-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.revision-diff-revs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+.revision-diff-files-tab {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+}

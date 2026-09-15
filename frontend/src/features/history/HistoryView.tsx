@@ -8,6 +8,9 @@ import {
   type HistoryScope,
 } from "../../api/commands";
 import { CommitDetailView } from "./CommitDetailView";
+import { HistoricalFileView } from "./HistoricalFileView";
+import { RevisionDiffView } from "./RevisionDiffView";
+import { BlameView } from "../working-copy/BlameView";
 
 const ROW_HEIGHT = 24;
 const PAGE_SIZE = 100;
@@ -25,9 +28,12 @@ export const HistoryView: Component<{
   root: string;
   hasUncommittedChanges: boolean;
   onSelectUncommitted: () => void;
+  initialScope?: HistoryScope;
 }> = (props) => {
-  const [scope, setScope] = createSignal<HistoryScope>({ kind: "CurrentBranch" });
-  const [pathFilter, setPathFilter] = createSignal("");
+  const [scope, setScope] = createSignal<HistoryScope>(props.initialScope ?? { kind: "CurrentBranch" });
+  const [pathFilter, setPathFilter] = createSignal(
+    props.initialScope && "path" in props.initialScope ? props.initialScope.path : "",
+  );
   const [totalCount, setTotalCount] = createSignal(0);
   const [scrollTop, setScrollTop] = createSignal(0);
   const [viewportHeight, setViewportHeight] = createSignal(400);
@@ -35,6 +41,10 @@ export const HistoryView: Component<{
   const [graphVersion, setGraphVersion] = createSignal(0);
   const [error, setError] = createSignal<string | null>(null);
   const [selectedSha, setSelectedSha] = createSignal<string | null>(null);
+  const [compareSha, setCompareSha] = createSignal<string | null>(null);
+  const [compareMode, setCompareMode] = createSignal(false);
+  const [historicalFile, setHistoricalFile] = createSignal<{ path: string; rev: string } | null>(null);
+  const [blameFile, setBlameFile] = createSignal<{ path: string; rev?: string } | null>(null);
 
   let cache = new Map<number, CommitSummary>();
   let loadedPages = new Set<number>();
@@ -43,6 +53,19 @@ export const HistoryView: Component<{
   let shaIndex = new Map<string, number>();
   let containerEl: HTMLDivElement | undefined;
   let canvasEl: HTMLCanvasElement | undefined;
+
+  createEffect(() => {
+    if (props.initialScope) {
+      setScope(props.initialScope);
+      if ("path" in props.initialScope) {
+        setPathFilter(props.initialScope.path);
+      }
+      setSelectedSha(null);
+      setCompareSha(null);
+      setHistoricalFile(null);
+      setBlameFile(null);
+    }
+  });
 
   function activeScope(): HistoryScope {
     const s = scope();
@@ -220,13 +243,37 @@ export const HistoryView: Component<{
     return rows;
   }
 
+  function onRowClick(e: MouseEvent, sha: string) {
+    setHistoricalFile(null);
+    setBlameFile(null);
+    if (e.ctrlKey || e.metaKey || compareMode()) {
+      if (!selectedSha()) {
+        setSelectedSha(sha);
+      } else if (selectedSha() === sha) {
+        if (compareSha()) setCompareSha(null);
+      } else {
+        setCompareSha(sha);
+      }
+    } else {
+      setSelectedSha(sha);
+      setCompareSha(null);
+    }
+  }
+
   return (
     <div class="history-view">
       <div class="history-scope-bar">
         <select
           class="history-scope-select"
           value={scope().kind}
-          onChange={(e) => setScope(e.currentTarget.value === "Path" ? { kind: "Path", path: pathFilter() } : ({ kind: e.currentTarget.value } as HistoryScope))}
+          onChange={(e) => {
+            const val = e.currentTarget.value;
+            setScope(val === "Path" ? { kind: "Path", path: pathFilter() } : ({ kind: val } as HistoryScope));
+            setSelectedSha(null);
+            setCompareSha(null);
+            setHistoricalFile(null);
+            setBlameFile(null);
+          }}
         >
           <option value="CurrentBranch">Current branch</option>
           <option value="AllBranches">All branches</option>
@@ -237,12 +284,40 @@ export const HistoryView: Component<{
           <input
             class="history-path-input"
             type="text"
-            placeholder="path/to/file"
+            placeholder="path/to/file or directory"
             value={pathFilter()}
             onInput={(e) => setPathFilter(e.currentTarget.value)}
           />
+          <Show when={pathFilter().trim()}>
+            <button
+              class="collapse-toggle"
+              onClick={() => setBlameFile({ path: pathFilter().trim(), rev: selectedSha() ?? undefined })}
+              title="View blame for this file"
+            >
+              Blame file
+            </button>
+            <button
+              class="collapse-toggle"
+              onClick={() => setHistoricalFile({ path: pathFilter().trim(), rev: selectedSha() ?? "HEAD" })}
+              title="View this file at current selected revision (or HEAD)"
+            >
+              View file
+            </button>
+          </Show>
         </Show>
         <span class="text-muted">{totalCount()} commits</span>
+        <button
+          class="collapse-toggle"
+          classList={{ "diff-mode-active": compareMode() }}
+          onClick={() => {
+            const next = !compareMode();
+            setCompareMode(next);
+            if (!next) setCompareSha(null);
+          }}
+          title="Select two commits to view their diff"
+        >
+          {compareMode() ? "Exit compare mode" : "Compare revisions"}
+        </button>
       </div>
       <Show when={error()}>
         <p class="diff-apply-error">{error()}</p>
@@ -264,15 +339,23 @@ export const HistoryView: Component<{
             {(row) => (
               <button
                 class="history-row"
-                classList={{ "history-row-selected": row.commit?.sha === selectedSha() }}
+                classList={{
+                  "history-row-selected": row.commit?.sha === selectedSha(),
+                  "history-row-compare": row.commit?.sha === compareSha(),
+                }}
                 style={{ transform: `translateY(${row.index * ROW_HEIGHT}px)`, "padding-left": `${GRAPH_WIDTH}px` }}
-                onClick={() => row.commit && setSelectedSha(row.commit.sha)}
+                onClick={(e) => row.commit && onRowClick(e, row.commit.sha)}
               >
                 <Show when={row.commit} fallback={<span class="text-muted">Loading…</span>}>
                   {(commit) => (
                     <>
                       <span class="history-sha">{commit().sha.slice(0, 7)}</span>
                       <span class="history-subject">{commit().subject}</span>
+                      <Show when={commit().rename_from}>
+                        <span class="badge badge-rename" title={`Renamed from ${commit().rename_from}`}>
+                          renamed from {commit().rename_from}
+                        </span>
+                      </Show>
                       <span class="history-author">{commit().author_name}</span>
                     </>
                   )}
@@ -282,7 +365,63 @@ export const HistoryView: Component<{
           </For>
         </div>
       </div>
-      <Show when={selectedSha()}>{(sha) => <CommitDetailView root={props.root} sha={sha()} />}</Show>
+
+      <Show when={historicalFile()}>
+        {(hf) => (
+          <HistoricalFileView
+            root={props.root}
+            rev={hf().rev}
+            path={hf().path}
+            onClose={() => setHistoricalFile(null)}
+          />
+        )}
+      </Show>
+
+      <Show when={blameFile()}>
+        {(bf) => (
+          <div class="history-blame-container">
+            <div class="history-blame-header">
+              <span>Blame: <strong>{bf().path}</strong></span>
+              <button class="collapse-toggle" onClick={() => setBlameFile(null)}>Close blame</button>
+            </div>
+            <BlameView root={props.root} path={bf().path} initialRev={bf().rev} />
+          </div>
+        )}
+      </Show>
+
+      <Show when={!historicalFile() && !blameFile() && selectedSha() && compareSha()}>
+        <RevisionDiffView
+          root={props.root}
+          oldRev={selectedSha()!}
+          oldPath={cache.get(shaIndex.get(selectedSha()!) ?? -1)?.path_at_commit ?? (scope().kind === "Path" ? pathFilter() : undefined)}
+          newRev={compareSha()!}
+          newPath={cache.get(shaIndex.get(compareSha()!) ?? -1)?.path_at_commit ?? (scope().kind === "Path" ? pathFilter() : undefined)}
+          onSwap={() => {
+            const s1 = selectedSha();
+            const s2 = compareSha();
+            setSelectedSha(s2);
+            setCompareSha(s1);
+          }}
+          onClose={() => setCompareSha(null)}
+        />
+      </Show>
+
+      <Show when={!historicalFile() && !blameFile() && !compareSha() && selectedSha() ? selectedSha() : null}>
+        {(sha) => (
+          <CommitDetailView
+            root={props.root}
+            sha={sha()}
+            onSelectFileHistory={(p) => {
+              setScope({ kind: "Path", path: p });
+              setPathFilter(p);
+              setSelectedSha(null);
+              setCompareSha(null);
+            }}
+            onOpenBlame={(p, rev) => setBlameFile({ path: p, rev })}
+            onViewRevision={(p, rev) => setHistoricalFile({ path: p, rev })}
+          />
+        )}
+      </Show>
     </div>
   );
 };

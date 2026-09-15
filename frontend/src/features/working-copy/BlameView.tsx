@@ -1,4 +1,4 @@
-import { type Component, For, Show, createResource, createSignal } from "solid-js";
+import { type Component, For, Show, createEffect, createResource, createSignal } from "solid-js";
 import { getBlame } from "../../api/commands";
 import { CommitDetailView } from "../history/CommitDetailView";
 import { groupBlameLines } from "./blame-grouping";
@@ -7,10 +7,14 @@ function formatDate(unixSeconds: number): string {
   return new Date(unixSeconds * 1000).toLocaleDateString();
 }
 
-export const BlameView: Component<{ root: string; path: string }> = (props) => {
+export const BlameView: Component<{ root: string; path: string; initialRev?: string }> = (props) => {
   const [ignoreWhitespace, setIgnoreWhitespace] = createSignal(false);
-  const [revStack, setRevStack] = createSignal<string[]>([]);
+  const [revStack, setRevStack] = createSignal<string[]>(props.initialRev ? [props.initialRev] : []);
   const [selectedSha, setSelectedSha] = createSignal<string | null>(null);
+
+  createEffect(() => {
+    setRevStack(props.initialRev ? [props.initialRev] : []);
+  });
 
   const currentRev = () => revStack()[revStack().length - 1];
 

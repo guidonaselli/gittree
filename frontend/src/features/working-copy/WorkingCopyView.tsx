@@ -57,6 +57,7 @@ function EntryRow(props: {
   onDiscard?: () => void;
   onToggleBlame: () => void;
   blameShown: boolean;
+  onViewHistory?: () => void;
 }) {
   return (
     <div class="working-copy-entry" classList={{ "working-copy-entry-expanded": props.expanded }}>
@@ -80,6 +81,11 @@ function EntryRow(props: {
       <button class="working-copy-action" classList={{ "diff-mode-active": props.blameShown }} onClick={props.onToggleBlame}>
         Blame
       </button>
+      <Show when={props.onViewHistory}>
+        <button class="working-copy-action" onClick={props.onViewHistory}>
+          History
+        </button>
+      </Show>
       <button class="working-copy-action" onClick={() => props.onAction(entryPathset(props.entry))}>
         {props.actionLabel}
       </button>
@@ -102,6 +108,7 @@ export const WorkingCopyView: Component<{
   messageTemplate: CommitMessageTemplate | null;
   onCheckHeadPublished: () => Promise<boolean>;
   onAmend: (message: string, options: CommitOptions) => Promise<void>;
+  onViewHistory?: (path: string) => void;
 }> = (props) => {
   const [selection, setSelection] = createSignal<Selection>(null);
   const [discardTarget, setDiscardTarget] = createSignal<DiscardTarget>(null);
@@ -197,6 +204,7 @@ export const WorkingCopyView: Component<{
                     expanded={selection()?.path === path && selection()?.staged === true}
                     onToggleBlame={() => toggleBlame(path)}
                     blameShown={blamePath() === path}
+                    onViewHistory={props.onViewHistory ? () => props.onViewHistory!(path) : undefined}
                   />
                   <Show when={selection()?.path === path && selection()?.staged === true}>
                     <HunkDiffView root={props.root} path={path} staged={true} onChanged={props.onHunksChanged} />
@@ -233,6 +241,7 @@ export const WorkingCopyView: Component<{
                     onDiscard={() => setDiscardTarget({ paths: entryPathset(entry()), label: path, untracked: false })}
                     onToggleBlame={() => toggleBlame(path)}
                     blameShown={blamePath() === path}
+                    onViewHistory={props.onViewHistory ? () => props.onViewHistory!(path) : undefined}
                   />
                   <Show when={selection()?.path === path && selection()?.staged === false}>
                     <HunkDiffView root={props.root} path={path} staged={false} onChanged={props.onHunksChanged} />

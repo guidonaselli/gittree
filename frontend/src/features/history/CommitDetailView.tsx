@@ -8,7 +8,13 @@ function signatureLabel(state: SignatureState): { text: string; class: string } 
   return { text: `Signature unverifiable: ${state.Unverifiable.reason}`, class: "signature-unverifiable" };
 }
 
-export const CommitDetailView: Component<{ root: string; sha: string }> = (props) => {
+export const CommitDetailView: Component<{
+  root: string;
+  sha: string;
+  onSelectFileHistory?: (path: string) => void;
+  onOpenBlame?: (path: string, rev: string) => void;
+  onViewRevision?: (path: string, rev: string) => void;
+}> = (props) => {
   const [parentIndex, setParentIndex] = createSignal<number | undefined>(undefined);
   const [detail] = createResource(
     () => [props.root, props.sha, parentIndex()] as const,
@@ -76,11 +82,42 @@ export const CommitDetailView: Component<{ root: string; sha: string }> = (props
             <table class="commit-detail-files">
               <For each={d().files}>
                 {(f) => (
-                  <tr>
-                    <td class="commit-detail-file-path">{f.path}</td>
-                    <td class="commit-detail-file-add">{f.additions === null ? "binary" : `+${f.additions}`}</td>
-                    <td class="commit-detail-file-del">{f.deletions === null ? "" : `-${f.deletions}`}</td>
-                  </tr>
+                  <>
+                    <tr>
+                      <td class="commit-detail-file-path">{f.path}</td>
+                      <td class="commit-detail-file-add">{f.additions === null ? "binary" : `+${f.additions}`}</td>
+                      <td class="commit-detail-file-del">{f.deletions === null ? "" : `-${f.deletions}`}</td>
+                      <td class="commit-detail-file-actions">
+                        <Show when={props.onSelectFileHistory}>
+                          <button
+                            class="working-copy-action"
+                            onClick={() => props.onSelectFileHistory!(f.path)}
+                            title="View history for this file"
+                          >
+                            History
+                          </button>
+                        </Show>
+                        <Show when={props.onOpenBlame}>
+                          <button
+                            class="working-copy-action"
+                            onClick={() => props.onOpenBlame!(f.path, props.sha)}
+                            title="View blame for this file at this commit"
+                          >
+                            Blame
+                          </button>
+                        </Show>
+                        <Show when={props.onViewRevision}>
+                          <button
+                            class="working-copy-action"
+                            onClick={() => props.onViewRevision!(f.path, props.sha)}
+                            title="Open historical revision read-only"
+                          >
+                            View
+                          </button>
+                        </Show>
+                      </td>
+                    </tr>
+                  </>
                 )}
               </For>
             </table>

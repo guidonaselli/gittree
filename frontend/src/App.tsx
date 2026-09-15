@@ -24,6 +24,7 @@ import {
   startWatching,
   stopWatching,
   unstageWorkingCopyPaths,
+  type HistoryScope,
 } from "./api/commands";
 import { onDesktopThemeChanged, onRepositoryChanged, onWatchDegraded } from "./api/events";
 import { isKnown, type Bookmark, type RepositoryState, type Resolved, type SubmoduleState, type WorkingCopyStatus } from "./api/types";
@@ -75,6 +76,7 @@ export const App: Component = () => {
   const [pathInput, setPathInput] = createSignal("");
   const [openError, setOpenError] = createSignal<string | null>(null);
   const [mainView, setMainView] = createSignal<"working-copy" | "history">("working-copy");
+  const [historyScope, setHistoryScope] = createSignal<HistoryScope | undefined>(undefined);
   const [stageError, setStageError] = createSignal<string | null>(null);
   const [commitError, setCommitError] = createSignal<string | null>(null);
   const [hookOutput, setHookOutput] = createSignal<string | null>(null);
@@ -511,7 +513,10 @@ export const App: Component = () => {
               <button
                 class="collapse-toggle"
                 aria-pressed={mainView() === "history"}
-                onClick={() => setMainView("history")}
+                onClick={() => {
+                  setHistoryScope(undefined);
+                  setMainView("history");
+                }}
               >
                 History
               </button>
@@ -521,6 +526,7 @@ export const App: Component = () => {
                 root={activeViewPath()!}
                 hasUncommittedChanges={hasUncommittedChanges()}
                 onSelectUncommitted={() => setMainView("working-copy")}
+                initialScope={historyScope()}
               />
             </Show>
             <Show when={mainView() === "working-copy"}>
@@ -544,6 +550,10 @@ export const App: Component = () => {
                     messageTemplate={commitMessageTemplate() ?? null}
                     onCheckHeadPublished={checkHeadPublished}
                     onAmend={amendHead}
+                    onViewHistory={(path) => {
+                      setHistoryScope({ kind: "Path", path });
+                      setMainView("history");
+                    }}
                   />
                 )}
               </Show>
