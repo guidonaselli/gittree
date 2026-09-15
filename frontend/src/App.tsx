@@ -7,6 +7,7 @@ import {
   deleteUntrackedWorkingCopyPaths,
   getCommitMessageTemplate,
   discardWorkingCopyPaths,
+  cancelWorkingCopyStatus,
   getBookmarks,
   getDesktopPalette,
   getOperationLog,
@@ -376,6 +377,12 @@ export const App: Component = () => {
     refetchOperationLog();
   }
 
+  async function cancelWorkingCopyScan() {
+    try {
+      await cancelWorkingCopyStatus();
+    } catch (_) {}
+  }
+
   return (
     <div class="app-shell">
       <div class="app-titlebar">
@@ -538,6 +545,8 @@ export const App: Component = () => {
                   <WorkingCopyView
                     root={activeViewPath()!}
                     status={status()}
+                    isScanning={workingCopy.loading}
+                    onCancelScan={cancelWorkingCopyScan}
                     onStage={stagePaths}
                     onUnstage={unstagePaths}
                     onDiscard={discardPaths}

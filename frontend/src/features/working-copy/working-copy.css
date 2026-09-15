@@ -236,6 +236,22 @@
   background: var(--color-bg-inset);
 }
 
+.working-copy-scan-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+  background: var(--color-bg-subtle);
+  border: var(--border-width-thin) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+}
+
+.working-copy-scan-text {
+  color: var(--color-text-muted);
+}
+
 .working-copy-entry {
   display: flex;
   align-items: center;

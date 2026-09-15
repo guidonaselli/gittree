@@ -12,12 +12,14 @@ use repo_state::{
     amend, commit, commit_message_template, delete_untracked_paths, diff_file,
     diff_file_with_options, diff_revisions, discard_tracked_paths, head_is_published, query_blame,
     query_commit_detail, query_file_at_revision, query_history_count, query_history_graph,
-    query_history_page, query_repository_state, query_submodule_matrix, query_working_copy_status,
-    read_blob_base64, read_working_tree_file_base64, stage_hunks, stage_lines,
+    query_history_page, query_repository_state, query_submodule_matrix,
+    query_working_copy_status_cancellable, read_blob_base64, read_working_tree_file_base64,
+    stage_hunks, stage_lines,
     stage_paths, stash_paths, unstage_hunks, unstage_lines, unstage_paths, BlameLine, BlameOptions,
     CommitDetail, CommitMessageTemplate, CommitOptions, CommitSummary,
     DiffViewOptions, FileDiff, GraphResult, HistoricalFile, HistoryScope, HistorySearchOptions,
-    HistorySearchResult, OpenOutcome, RepositoryState, Resolved, SubmoduleState, WorkingCopyStatus,
+    HistorySearchResult, OpenOutcome, RepositoryState, Resolved, SubmoduleState,
+    WorkingCopyStatus,
 };
 use serde::Serialize;
 use settings::{Bookmark, BookmarksState, Settings, SettingsLoadResult};
@@ -34,6 +36,9 @@ pub struct AppState {
 
 #[derive(Default)]
 pub struct SearchState(pub Mutex<Option<CancellationToken>>);
+
+#[derive(Default)]
+pub struct WorkingCopyScanState(pub Mutex<Option<CancellationToken>>);
 
 /// Runs before the Tauri builder so a failed version check never produces
 /// a half-initialized window.
@@ -71,10 +76,28 @@ async fn get_submodule_matrix(
 #[tauri::command]
 async fn get_working_copy_status(
     state: State<'_, AppState>,
+    scan_state: State<'_, WorkingCopyScanState>,
     root: String,
 ) -> Result<Resolved<WorkingCopyStatus>, String> {
     let root = PathBuf::from(root);
-    Ok(query_working_copy_status(&state.process_layer, &root).await)
+    let token = CancellationToken::new();
+    {
+        let mut guard = scan_state.0.lock().map_err(|e| e.to_string())?;
+        if let Some(prev) = guard.replace(token.clone()) {
+            prev.cancel();
+        }
+    }
+    let res = query_working_copy_status_cancellable(&state.process_layer, &root, token).await;
+    Ok(res)
+}
+
+#[tauri::command]
+fn cancel_working_copy_status(scan_state: State<'_, WorkingCopyScanState>) {
+    if let Ok(mut guard) = scan_state.0.lock() {
+        if let Some(token) = guard.take() {
+            token.cancel();
+        }
+    }
 }
 
 #[tauri::command]
@@ -561,10 +584,12 @@ pub fn run() {
         .manage(BookmarksState::default())
         .manage(WatcherState::default())
         .manage(SearchState::default())
+        .manage(WorkingCopyScanState::default())
         .invoke_handler(tauri::generate_handler![
             get_repository_state,
             get_submodule_matrix,
             get_working_copy_status,
+            cancel_working_copy_status,
             stage_working_copy_paths,
             unstage_working_copy_paths,
             get_file_diff,

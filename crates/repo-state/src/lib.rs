@@ -41,6 +41,6 @@ pub use status::{query_repository_state, InProgressOperation, RepositoryState};
 pub use submodule::{query_submodule_matrix, GitlinkDivergence, SubmoduleState};
 pub use upstream::{resolve_upstream_basis, UpstreamBasis};
 pub use working_copy::{
-    query_working_copy_status, ChangeCode, ChangedEntry, ConflictEntry, SubmoduleFlags,
-    WorkingCopyStatus,
+    query_working_copy_status, query_working_copy_status_cancellable, ChangeCode, ChangedEntry,
+    ConflictEntry, SubmoduleFlags, WorkingCopyStatus,
 };

@@ -50,7 +50,7 @@ fn parse_submodule_field(sub: &str) -> Option<SubmoduleFlags> {
     })
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ChangedEntry {
     pub path: PathBuf,
     pub staged: ChangeCode,
@@ -65,7 +65,7 @@ pub struct ConflictEntry {
     pub code: String,
 }
 
-#[derive(Debug, Clone, Default, serde::Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 pub struct WorkingCopyStatus {
     pub changed: Vec<ChangedEntry>,
     pub untracked: Vec<PathBuf>,
@@ -146,9 +146,10 @@ pub fn parse_working_copy_status(raw: &[u8]) -> WorkingCopyStatus {
     out
 }
 
-pub async fn query_working_copy_status(
+pub async fn query_working_copy_status_cancellable(
     layer: &ProcessLayer,
     root: &Path,
+    cancel: CancellationToken,
 ) -> Resolved<WorkingCopyStatus> {
     match layer
         .run(
@@ -157,14 +158,22 @@ pub async fn query_working_copy_status(
                 ["status", "--porcelain=v2", "-z", "--untracked-files=all"],
             ),
             Intent::Read,
-            CancellationToken::new(),
+            cancel,
         )
         .await
     {
         Ok(r) if r.ok() => Resolved::known(parse_working_copy_status(&r.stdout)),
         Ok(r) => Resolved::unknown(format!("status failed: {}", r.stderr.trim())),
+        Err(git_process::GitError::Cancelled) => Resolved::unknown("cancelled"),
         Err(e) => Resolved::unknown(e.to_string()),
     }
+}
+
+pub async fn query_working_copy_status(
+    layer: &ProcessLayer,
+    root: &Path,
+) -> Resolved<WorkingCopyStatus> {
+    query_working_copy_status_cancellable(layer, root, CancellationToken::new()).await
 }
 
 #[cfg(test)]
@@ -322,5 +331,15 @@ mod tests {
             .unwrap();
         assert_eq!(status.conflicted.len(), 1);
         assert_eq!(status.conflicted[0].path, PathBuf::from("f.txt"));
+    }
+
+    #[tokio::test]
+    async fn working_copy_status_cancellation_aborts() {
+        let dir = init_repo();
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+        let status = query_working_copy_status_cancellable(&layer, dir.path(), cancel).await;
+        assert_eq!(status, Resolved::unknown("cancelled"));
     }
 }

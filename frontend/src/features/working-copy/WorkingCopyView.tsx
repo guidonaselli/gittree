@@ -1,4 +1,14 @@
-import { type Component, For, Show, createMemo, createSignal } from "solid-js";
+import {
+  type Component,
+  For,
+  Show,
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  onMount,
+  type JSX,
+} from "solid-js";
 import {
   changeCodeLabel,
   isKnown,
@@ -18,6 +28,9 @@ function entryPathset(entry: ChangedEntry): string[] {
 
 type Selection = { path: string; staged: boolean } | null;
 type DiscardTarget = { paths: string[]; label: string; untracked: boolean } | null;
+
+const ROW_HEIGHT = 28;
+const OVERSCAN = 15;
 
 function DiscardConfirm(props: {
   target: NonNullable<DiscardTarget>;
@@ -93,9 +106,82 @@ function EntryRow(props: {
   );
 }
 
+function VirtualFileList<T>(props: {
+  items: T[];
+  containerRef: () => HTMLDivElement | undefined;
+  scrollTop: () => number;
+  viewportHeight: () => number;
+  renderItem: (item: T) => JSX.Element;
+  activeItemKey?: string | null;
+  getItemKey: (item: T) => string;
+}) {
+  let listRef: HTMLDivElement | undefined;
+
+  const visibleRange = createMemo(() => {
+    const total = props.items.length;
+    if (total <= 40) {
+      return { start: 0, end: total };
+    }
+    const container = props.containerRef();
+    if (!container || !listRef) {
+      return { start: 0, end: Math.min(total, 50) };
+    }
+
+    const sTop = props.scrollTop();
+    const vHeight = props.viewportHeight();
+
+    let offset = 0;
+    let el: HTMLElement | null = listRef;
+    while (el && el !== container) {
+      offset += el.offsetTop;
+      el = el.offsetParent as HTMLElement | null;
+    }
+
+    const relStartPx = Math.max(0, sTop - offset);
+    const relEndPx = Math.max(0, sTop + vHeight - offset);
+
+    let start = Math.max(0, Math.floor(relStartPx / ROW_HEIGHT) - OVERSCAN);
+    let end = Math.min(total, Math.ceil(relEndPx / ROW_HEIGHT) + OVERSCAN);
+
+    if (props.activeItemKey) {
+      const activeIdx = props.items.findIndex(
+        (it) => props.getItemKey(it) === props.activeItemKey
+      );
+      if (activeIdx >= 0) {
+        if (activeIdx < start) start = activeIdx;
+        if (activeIdx >= end) end = activeIdx + 1;
+      }
+    }
+
+    return { start, end };
+  });
+
+  const topSpacerHeight = () => visibleRange().start * ROW_HEIGHT;
+  const bottomSpacerHeight = () => (props.items.length - visibleRange().end) * ROW_HEIGHT;
+  const renderedItems = createMemo(() =>
+    props.items.slice(visibleRange().start, visibleRange().end)
+  );
+
+  return (
+    <div ref={listRef} class="virtual-file-list">
+      <Show when={topSpacerHeight() > 0}>
+        <div style={{ height: `${topSpacerHeight()}px` }} />
+      </Show>
+      <For each={renderedItems()}>
+        {(item) => props.renderItem(item)}
+      </For>
+      <Show when={bottomSpacerHeight() > 0}>
+        <div style={{ height: `${bottomSpacerHeight()}px` }} />
+      </Show>
+    </div>
+  );
+}
+
 export const WorkingCopyView: Component<{
   root: string;
   status: Resolved<WorkingCopyStatus>;
+  isScanning?: boolean;
+  onCancelScan?: () => void;
   onStage: (paths: string[]) => void;
   onUnstage: (paths: string[]) => void;
   onDiscard: (paths: string[]) => void;
@@ -110,9 +196,31 @@ export const WorkingCopyView: Component<{
   onAmend: (message: string, options: CommitOptions) => Promise<void>;
   onViewHistory?: (path: string) => void;
 }> = (props) => {
+  let containerRef: HTMLDivElement | undefined;
+  const [scrollTop, setScrollTop] = createSignal(0);
+  const [viewportHeight, setViewportHeight] = createSignal(800);
+
   const [selection, setSelection] = createSignal<Selection>(null);
   const [discardTarget, setDiscardTarget] = createSignal<DiscardTarget>(null);
   const [blamePath, setBlamePath] = createSignal<string | null>(null);
+
+  function handleScroll(e: Event) {
+    const target = e.currentTarget as HTMLElement;
+    setScrollTop(target.scrollTop);
+  }
+
+  onMount(() => {
+    if (containerRef) {
+      setViewportHeight(containerRef.clientHeight || 800);
+      const observer = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          setViewportHeight(entry.contentRect.height || 800);
+        }
+      });
+      observer.observe(containerRef);
+      onCleanup(() => observer.disconnect());
+    }
+  });
 
   function toggle(path: string, staged: boolean) {
     const current = selection();
@@ -150,9 +258,59 @@ export const WorkingCopyView: Component<{
   const allUnstagedPaths = createMemo(() => [...unstaged().flatMap(entryPathset), ...untracked()]);
   const allStagedPaths = createMemo(() => staged().flatMap(entryPathset));
 
+  const [admittedCount, setAdmittedCount] = createSignal(100);
+
+  createEffect(() => {
+    const statusVal = known();
+    if (!statusVal) return;
+    const total = statusVal.changed.length + statusVal.untracked.length;
+    if (total <= 100) {
+      setAdmittedCount(total);
+      return;
+    }
+    setAdmittedCount(100);
+    let current = 100;
+    let rafId: number;
+
+    function step() {
+      current = Math.min(total, current + 500);
+      setAdmittedCount(current);
+      if (current < total) {
+        rafId = requestAnimationFrame(step);
+      }
+    }
+
+    rafId = requestAnimationFrame(step);
+    onCleanup(() => cancelAnimationFrame(rafId));
+  });
+
+  const stagedItems = createMemo(() =>
+    staged().slice(0, Math.min(staged().length, admittedCount()))
+  );
+  const unstagedOffset = createMemo(() => Math.max(0, admittedCount() - staged().length));
+  const unstagedItems = createMemo(() =>
+    unstaged().slice(0, Math.min(unstaged().length, unstagedOffset()))
+  );
+  const untrackedOffset = createMemo(() =>
+    Math.max(0, unstagedOffset() - unstaged().length)
+  );
+  const untrackedItems = createMemo(() =>
+    untracked().slice(0, Math.min(untracked().length, untrackedOffset()))
+  );
+
   return (
     <Show when={known()} fallback={<div class="text-muted">working copy status unknown ({reason()})</div>}>
-      <div class="working-copy">
+      <div ref={containerRef} class="working-copy" onScroll={handleScroll}>
+        <Show when={props.isScanning}>
+          <div class="working-copy-scan-banner">
+            <span class="working-copy-scan-text">Scanning working copy...</span>
+            <Show when={props.onCancelScan}>
+              <button class="working-copy-action" onClick={props.onCancelScan}>
+                Cancel scan
+              </button>
+            </Show>
+          </div>
+        </Show>
         <Show when={discardTarget()}>
           {(target) => (
             <DiscardConfirm target={target()} onConfirm={confirmDiscard} onStash={confirmStash} onCancel={() => setDiscardTarget(null)} />
@@ -190,32 +348,35 @@ export const WorkingCopyView: Component<{
               </button>
             </Show>
           </div>
-          <For each={staged().map((e) => e.path)}>
-            {(path) => {
-              const entry = createMemo(() => staged().find((x) => x.path === path)!);
-              return (
-                <>
-                  <EntryRow
-                    entry={entry()}
-                    code={changeCodeLabel(entry().staged)}
-                    actionLabel="Unstage"
-                    onAction={props.onUnstage}
-                    onTogglePath={() => toggle(path, true)}
-                    expanded={selection()?.path === path && selection()?.staged === true}
-                    onToggleBlame={() => toggleBlame(path)}
-                    blameShown={blamePath() === path}
-                    onViewHistory={props.onViewHistory ? () => props.onViewHistory!(path) : undefined}
-                  />
-                  <Show when={selection()?.path === path && selection()?.staged === true}>
-                    <HunkDiffView root={props.root} path={path} staged={true} onChanged={props.onHunksChanged} />
-                  </Show>
-                  <Show when={blamePath() === path}>
-                    <BlameView root={props.root} path={path} />
-                  </Show>
-                </>
-              );
-            }}
-          </For>
+          <VirtualFileList
+            items={stagedItems()}
+            containerRef={() => containerRef}
+            scrollTop={scrollTop}
+            viewportHeight={viewportHeight}
+            activeItemKey={selection()?.staged ? selection()?.path : blamePath()}
+            getItemKey={(e) => e.path}
+            renderItem={(entry) => (
+              <>
+                <EntryRow
+                  entry={entry}
+                  code={changeCodeLabel(entry.staged)}
+                  actionLabel="Unstage"
+                  onAction={props.onUnstage}
+                  onTogglePath={() => toggle(entry.path, true)}
+                  expanded={selection()?.path === entry.path && selection()?.staged === true}
+                  onToggleBlame={() => toggleBlame(entry.path)}
+                  blameShown={blamePath() === entry.path}
+                  onViewHistory={props.onViewHistory ? () => props.onViewHistory!(entry.path) : undefined}
+                />
+                <Show when={selection()?.path === entry.path && selection()?.staged === true}>
+                  <HunkDiffView root={props.root} path={entry.path} staged={true} onChanged={props.onHunksChanged} />
+                </Show>
+                <Show when={blamePath() === entry.path}>
+                  <BlameView root={props.root} path={entry.path} />
+                </Show>
+              </>
+            )}
+          />
         </section>
         <section class="working-copy-group">
           <div class="working-copy-group-header">
@@ -226,38 +387,46 @@ export const WorkingCopyView: Component<{
               </button>
             </Show>
           </div>
-          <For each={unstaged().map((e) => e.path)}>
-            {(path) => {
-              const entry = createMemo(() => unstaged().find((x) => x.path === path)!);
-              return (
-                <>
-                  <EntryRow
-                    entry={entry()}
-                    code={changeCodeLabel(entry().unstaged)}
-                    actionLabel="Stage"
-                    onAction={props.onStage}
-                    onTogglePath={() => toggle(path, false)}
-                    expanded={selection()?.path === path && selection()?.staged === false}
-                    onDiscard={() => setDiscardTarget({ paths: entryPathset(entry()), label: path, untracked: false })}
-                    onToggleBlame={() => toggleBlame(path)}
-                    blameShown={blamePath() === path}
-                    onViewHistory={props.onViewHistory ? () => props.onViewHistory!(path) : undefined}
-                  />
-                  <Show when={selection()?.path === path && selection()?.staged === false}>
-                    <HunkDiffView root={props.root} path={path} staged={false} onChanged={props.onHunksChanged} />
-                  </Show>
-                  <Show when={blamePath() === path}>
-                    <BlameView root={props.root} path={path} />
-                  </Show>
-                </>
-              );
-            }}
-          </For>
+          <VirtualFileList
+            items={unstagedItems()}
+            containerRef={() => containerRef}
+            scrollTop={scrollTop}
+            viewportHeight={viewportHeight}
+            activeItemKey={selection() && !selection()?.staged ? selection()?.path : blamePath()}
+            getItemKey={(e) => e.path}
+            renderItem={(entry) => (
+              <>
+                <EntryRow
+                  entry={entry}
+                  code={changeCodeLabel(entry.unstaged)}
+                  actionLabel="Stage"
+                  onAction={props.onStage}
+                  onTogglePath={() => toggle(entry.path, false)}
+                  expanded={selection()?.path === entry.path && selection()?.staged === false}
+                  onDiscard={() => setDiscardTarget({ paths: entryPathset(entry), label: entry.path, untracked: false })}
+                  onToggleBlame={() => toggleBlame(entry.path)}
+                  blameShown={blamePath() === entry.path}
+                  onViewHistory={props.onViewHistory ? () => props.onViewHistory!(entry.path) : undefined}
+                />
+                <Show when={selection()?.path === entry.path && selection()?.staged === false}>
+                  <HunkDiffView root={props.root} path={entry.path} staged={false} onChanged={props.onHunksChanged} />
+                </Show>
+                <Show when={blamePath() === entry.path}>
+                  <BlameView root={props.root} path={entry.path} />
+                </Show>
+              </>
+            )}
+          />
         </section>
         <section class="working-copy-group">
           <h3>Untracked ({untracked().length})</h3>
-          <For each={untracked()}>
-            {(path) => (
+          <VirtualFileList
+            items={untrackedItems()}
+            containerRef={() => containerRef}
+            scrollTop={scrollTop}
+            viewportHeight={viewportHeight}
+            getItemKey={(path) => path}
+            renderItem={(path) => (
               <div class="working-copy-entry">
                 <span class="working-copy-code">?</span>
                 <span class="working-copy-path">{path}</span>
@@ -272,7 +441,7 @@ export const WorkingCopyView: Component<{
                 </button>
               </div>
             )}
-          </For>
+          />
         </section>
       </div>
     </Show>

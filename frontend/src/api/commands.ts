@@ -35,6 +35,10 @@ export function getWorkingCopyStatus(root: string): Promise<Resolved<WorkingCopy
   return invoke<Resolved<WorkingCopyStatus>>("get_working_copy_status", { root });
 }
 
+export function cancelWorkingCopyStatus(): Promise<void> {
+  return invoke<void>("cancel_working_copy_status");
+}
+
 export function stageWorkingCopyPaths(root: string, paths: string[]): Promise<void> {
   return invoke<void>("stage_working_copy_paths", { root, paths });
 }
