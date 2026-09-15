@@ -18,9 +18,10 @@ use repo_state::{
     stage_paths, stash_paths, unstage_hunks, unstage_lines, unstage_paths, BlameLine, BlameOptions,
     CommitDetail, CommitMessageTemplate, CommitOptions, CommitSummary,
     DiffViewOptions, FileDiff, GraphResult, HistoricalFile, HistoryScope, HistorySearchOptions,
-    HistorySearchResult, OpenOutcome, RepositoryState, Resolved, SubmoduleState,
-    WorkingCopyStatus,
+    HistorySearchResult, IgnoreExplanation, IgnoreTarget, OpenOutcome, RepositoryState, Resolved,
+    SubmoduleState, WorkingCopyStatus,
 };
+use repo_state::{add_ignore_rule, check_ignore};
 use serde::Serialize;
 use settings::{Bookmark, BookmarksState, Settings, SettingsLoadResult};
 use std::sync::Mutex;
@@ -340,6 +341,27 @@ async fn delete_untracked_working_copy_paths(
 }
 
 #[tauri::command]
+async fn check_ignore_path(
+    state: State<'_, AppState>,
+    root: String,
+    path: String,
+) -> Result<Option<IgnoreExplanation>, String> {
+    let root = PathBuf::from(root);
+    check_ignore(&state.process_layer, &root, &path).await
+}
+
+#[tauri::command]
+async fn add_ignore_rule_command(
+    state: State<'_, AppState>,
+    root: String,
+    target: IgnoreTarget,
+    pattern: String,
+) -> Result<(), String> {
+    let root = PathBuf::from(root);
+    add_ignore_rule(&state.process_layer, &root, target, &pattern).await
+}
+
+#[tauri::command]
 async fn stash_working_copy_paths(
     state: State<'_, AppState>,
     root: String,
@@ -607,6 +629,8 @@ pub fn run() {
             unstage_file_lines,
             discard_working_copy_paths,
             delete_untracked_working_copy_paths,
+            check_ignore_path,
+            add_ignore_rule_command,
             stash_working_copy_paths,
             commit_working_copy,
             is_head_published,

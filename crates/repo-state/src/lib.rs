@@ -8,6 +8,7 @@ mod diff;
 mod discard;
 mod graph;
 mod history;
+mod ignore;
 mod message_template;
 mod resolve;
 mod resolved;
@@ -32,6 +33,10 @@ pub use graph::{query_history_graph, GraphResult, GraphRow, LANE_BUDGET};
 pub use history::{
     query_file_at_revision, query_history_count, query_history_page, search_history, CommitSummary,
     ContentSearchMode, HistoricalFile, HistoryScope, HistorySearchOptions, HistorySearchResult,
+};
+pub use ignore::{
+    add_ignore_rule, check_ignore, compute_ignore_pattern, IgnoreExplanation, IgnorePatternKind,
+    IgnoreTarget,
 };
 pub use message_template::{commit_message_template, CommitMessageTemplate};
 pub use resolve::{init_repository, resolve_open, OpenOutcome};

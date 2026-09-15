@@ -183,3 +183,12 @@ export function gitlinkDivergenceLabel(d: Resolved<GitlinkDivergence>): string {
   if (v === "UnrelatedHistories") return "unrelated histories";
   return `${v.Diverged.ahead} ahead / ${v.Diverged.behind} behind`;
 }
+
+export type IgnoreTarget = "GitIgnore" | "GitInfoExclude";
+
+export interface IgnoreExplanation {
+  source: string;
+  line_number: number;
+  pattern: string;
+  path: string;
+}

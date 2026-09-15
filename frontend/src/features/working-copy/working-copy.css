@@ -444,3 +444,66 @@
 .commit-subject-guide-danger {
   color: var(--color-danger);
 }
+
+.ignore-dialog {
+  background: var(--color-bg-subtle);
+  border: var(--border-width-thin) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ignore-dialog h4 {
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+.ignore-dialog-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ignore-dialog-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  font-size: var(--font-size-xs);
+}
+
+.ignore-dialog-options label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  cursor: pointer;
+}
+
+.ignore-pattern-input {
+  background: var(--color-bg);
+  border: var(--border-width-thin) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  padding: var(--space-1) var(--space-2);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+}
+
+.ignore-explanation-box {
+  background: var(--color-bg-inset);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+}
+
+.working-copy-action-primary {
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+  border-color: var(--color-accent);
+}
+
+.working-copy-action-primary:hover {
+  background: var(--color-accent-hover);
+}

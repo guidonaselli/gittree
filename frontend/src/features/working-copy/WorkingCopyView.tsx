@@ -14,10 +14,17 @@ import {
   isKnown,
   unknownReason,
   type ChangedEntry,
+  type IgnoreExplanation,
+  type IgnoreTarget,
   type Resolved,
   type WorkingCopyStatus,
 } from "../../api/types";
-import type { CommitMessageTemplate, CommitOptions } from "../../api/commands";
+import {
+  addIgnoreRule,
+  checkIgnorePath,
+  type CommitMessageTemplate,
+  type CommitOptions,
+} from "../../api/commands";
 import { BlameView } from "./BlameView";
 import { CommitPanel } from "./CommitPanel";
 import { HunkDiffView } from "./HunkDiffView";
@@ -60,6 +67,173 @@ function DiscardConfirm(props: {
   );
 }
 
+function IgnoreModal(props: {
+  root: string;
+  path: string;
+  onClose: () => void;
+  onAddRule: (target: IgnoreTarget, pattern: string) => Promise<void>;
+  onCheckIgnore: (path: string) => Promise<IgnoreExplanation | null>;
+}) {
+  const [target, setTarget] = createSignal<IgnoreTarget>("GitIgnore");
+  const [patternKind, setPatternKind] = createSignal<"path" | "extension" | "directory">("path");
+  const [customPattern, setCustomPattern] = createSignal(props.path);
+  const [explanation, setExplanation] = createSignal<IgnoreExplanation | null | undefined>(undefined);
+  const [isChecking, setIsChecking] = createSignal(false);
+  const [isSubmitting, setIsSubmitting] = createSignal(false);
+  const [error, setError] = createSignal<string | null>(null);
+
+  const ext = () => {
+    const idx = props.path.lastIndexOf(".");
+    return idx > 0 ? props.path.slice(idx) : null;
+  };
+  const extPattern = () => (ext() ? `*${ext()}` : null);
+
+  const dir = () => {
+    const idx = props.path.lastIndexOf("/");
+    return idx > 0 ? props.path.slice(0, idx + 1) : null;
+  };
+  const dirPattern = () => dir();
+
+  function selectKind(kind: "path" | "extension" | "directory") {
+    setPatternKind(kind);
+    if (kind === "path") setCustomPattern(props.path);
+    else if (kind === "extension" && extPattern()) setCustomPattern(extPattern()!);
+    else if (kind === "directory" && dirPattern()) setCustomPattern(dirPattern()!);
+  }
+
+  async function handleCheck() {
+    setIsChecking(true);
+    setError(null);
+    try {
+      const res = await props.onCheckIgnore(props.path);
+      setExplanation(res);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setIsChecking(false);
+    }
+  }
+
+  async function handleSubmit() {
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      await props.onAddRule(target(), customPattern());
+      props.onClose();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <div class="ignore-dialog">
+      <h4>Ignore rule for <code>{props.path}</code></h4>
+      <div class="ignore-dialog-field">
+        <label>Target:</label>
+        <div class="ignore-dialog-options">
+          <label>
+            <input
+              type="radio"
+              name="ignore-target"
+              checked={target() === "GitIgnore"}
+              onChange={() => setTarget("GitIgnore")}
+            />
+            .gitignore (versioned)
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="ignore-target"
+              checked={target() === "GitInfoExclude"}
+              onChange={() => setTarget("GitInfoExclude")}
+            />
+            .git/info/exclude (local only)
+          </label>
+        </div>
+      </div>
+      <div class="ignore-dialog-field">
+        <label>Pattern type:</label>
+        <div class="ignore-dialog-options">
+          <label>
+            <input
+              type="radio"
+              name="pattern-kind"
+              checked={patternKind() === "path"}
+              onChange={() => selectKind("path")}
+            />
+            Exact path (<code>{props.path}</code>)
+          </label>
+          <Show when={extPattern()}>
+            <label>
+              <input
+                type="radio"
+                name="pattern-kind"
+                checked={patternKind() === "extension"}
+                onChange={() => selectKind("extension")}
+              />
+              Extension (<code>{extPattern()}</code>)
+            </label>
+          </Show>
+          <Show when={dirPattern()}>
+            <label>
+              <input
+                type="radio"
+                name="pattern-kind"
+                checked={patternKind() === "directory"}
+                onChange={() => selectKind("directory")}
+              />
+              Directory (<code>{dirPattern()}</code>)
+            </label>
+          </Show>
+        </div>
+      </div>
+      <div class="ignore-dialog-field">
+        <label>Pattern:</label>
+        <input
+          class="ignore-pattern-input"
+          value={customPattern()}
+          onInput={(e) => setCustomPattern(e.currentTarget.value)}
+        />
+      </div>
+      <Show when={explanation() !== undefined}>
+        <div class="ignore-explanation-box">
+          <Show
+            when={explanation()}
+            fallback={<span class="text-muted">No ignore rule matches this path.</span>}
+          >
+            {(exp) => (
+              <span>
+                Matched by <strong>{exp().source}</strong>:{exp().line_number} (
+                <code>{exp().pattern}</code>)
+              </span>
+            )}
+          </Show>
+        </div>
+      </Show>
+      <Show when={error()}>
+        <div class="text-danger">{error()}</div>
+      </Show>
+      <div class="discard-confirm-actions">
+        <button class="working-copy-action" onClick={handleCheck} disabled={isChecking()}>
+          {isChecking() ? "Checking..." : "Explain why ignored"}
+        </button>
+        <button
+          class="working-copy-action working-copy-action-primary"
+          onClick={handleSubmit}
+          disabled={isSubmitting() || !customPattern().trim()}
+        >
+          {isSubmitting() ? "Adding..." : "Add ignore rule"}
+        </button>
+        <button class="working-copy-action" onClick={props.onClose}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function EntryRow(props: {
   entry: ChangedEntry;
   code: string;
@@ -71,6 +245,7 @@ function EntryRow(props: {
   onToggleBlame: () => void;
   blameShown: boolean;
   onViewHistory?: () => void;
+  onIgnore?: () => void;
 }) {
   return (
     <div class="working-copy-entry" classList={{ "working-copy-entry-expanded": props.expanded }}>
@@ -97,6 +272,11 @@ function EntryRow(props: {
       <Show when={props.onViewHistory}>
         <button class="working-copy-action" onClick={props.onViewHistory}>
           History
+        </button>
+      </Show>
+      <Show when={props.onIgnore}>
+        <button class="working-copy-action" onClick={props.onIgnore}>
+          Ignore
         </button>
       </Show>
       <button class="working-copy-action" onClick={() => props.onAction(entryPathset(props.entry))}>
@@ -195,6 +375,8 @@ export const WorkingCopyView: Component<{
   onCheckHeadPublished: () => Promise<boolean>;
   onAmend: (message: string, options: CommitOptions) => Promise<void>;
   onViewHistory?: (path: string) => void;
+  onAddIgnoreRule?: (target: IgnoreTarget, pattern: string) => Promise<void>;
+  onCheckIgnore?: (path: string) => Promise<IgnoreExplanation | null>;
 }> = (props) => {
   let containerRef: HTMLDivElement | undefined;
   const [scrollTop, setScrollTop] = createSignal(0);
@@ -202,6 +384,7 @@ export const WorkingCopyView: Component<{
 
   const [selection, setSelection] = createSignal<Selection>(null);
   const [discardTarget, setDiscardTarget] = createSignal<DiscardTarget>(null);
+  const [ignorePath, setIgnorePath] = createSignal<string | null>(null);
   const [blamePath, setBlamePath] = createSignal<string | null>(null);
 
   function handleScroll(e: Event) {
@@ -298,6 +481,22 @@ export const WorkingCopyView: Component<{
     untracked().slice(0, Math.min(untracked().length, untrackedOffset()))
   );
 
+  async function handleAddIgnoreRule(target: IgnoreTarget, pattern: string) {
+    if (props.onAddIgnoreRule) {
+      await props.onAddIgnoreRule(target, pattern);
+    } else {
+      await addIgnoreRule(props.root, target, pattern);
+      props.onHunksChanged();
+    }
+  }
+
+  async function handleCheckIgnore(path: string): Promise<IgnoreExplanation | null> {
+    if (props.onCheckIgnore) {
+      return await props.onCheckIgnore(path);
+    }
+    return await checkIgnorePath(props.root, path);
+  }
+
   return (
     <Show when={known()} fallback={<div class="text-muted">working copy status unknown ({reason()})</div>}>
       <div ref={containerRef} class="working-copy" onScroll={handleScroll}>
@@ -314,6 +513,17 @@ export const WorkingCopyView: Component<{
         <Show when={discardTarget()}>
           {(target) => (
             <DiscardConfirm target={target()} onConfirm={confirmDiscard} onStash={confirmStash} onCancel={() => setDiscardTarget(null)} />
+          )}
+        </Show>
+        <Show when={ignorePath()}>
+          {(path) => (
+            <IgnoreModal
+              root={props.root}
+              path={path()}
+              onClose={() => setIgnorePath(null)}
+              onAddRule={handleAddIgnoreRule}
+              onCheckIgnore={handleCheckIgnore}
+            />
           )}
         </Show>
         <Show when={conflicted().length > 0}>
@@ -367,6 +577,7 @@ export const WorkingCopyView: Component<{
                   onToggleBlame={() => toggleBlame(entry.path)}
                   blameShown={blamePath() === entry.path}
                   onViewHistory={props.onViewHistory ? () => props.onViewHistory!(entry.path) : undefined}
+                  onIgnore={() => setIgnorePath(entry.path)}
                 />
                 <Show when={selection()?.path === entry.path && selection()?.staged === true}>
                   <HunkDiffView root={props.root} path={entry.path} staged={true} onChanged={props.onHunksChanged} />
@@ -407,6 +618,7 @@ export const WorkingCopyView: Component<{
                   onToggleBlame={() => toggleBlame(entry.path)}
                   blameShown={blamePath() === entry.path}
                   onViewHistory={props.onViewHistory ? () => props.onViewHistory!(entry.path) : undefined}
+                  onIgnore={() => setIgnorePath(entry.path)}
                 />
                 <Show when={selection()?.path === entry.path && selection()?.staged === false}>
                   <HunkDiffView root={props.root} path={entry.path} staged={false} onChanged={props.onHunksChanged} />
@@ -435,6 +647,9 @@ export const WorkingCopyView: Component<{
                   onClick={() => setDiscardTarget({ paths: [path], label: path, untracked: true })}
                 >
                   Delete
+                </button>
+                <button class="working-copy-action" onClick={() => setIgnorePath(path)}>
+                  Ignore
                 </button>
                 <button class="working-copy-action" onClick={() => props.onStage([path])}>
                   Stage

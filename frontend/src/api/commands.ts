@@ -3,6 +3,8 @@ import type {
   Bookmark,
   DesktopPalette,
   FileDiff,
+  IgnoreExplanation,
+  IgnoreTarget,
   LogEntry,
   OpenRepositoryResult,
   RepositoryState,
@@ -37,6 +39,14 @@ export function getWorkingCopyStatus(root: string): Promise<Resolved<WorkingCopy
 
 export function cancelWorkingCopyStatus(): Promise<void> {
   return invoke<void>("cancel_working_copy_status");
+}
+
+export function checkIgnorePath(root: string, path: string): Promise<IgnoreExplanation | null> {
+  return invoke<IgnoreExplanation | null>("check_ignore_path", { root, path });
+}
+
+export function addIgnoreRule(root: string, target: IgnoreTarget, pattern: string): Promise<void> {
+  return invoke<void>("add_ignore_rule_command", { root, target, pattern });
 }
 
 export function stageWorkingCopyPaths(root: string, paths: string[]): Promise<void> {
