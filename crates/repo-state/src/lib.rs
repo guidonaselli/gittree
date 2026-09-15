@@ -16,6 +16,7 @@ mod status;
 mod submodule;
 mod upstream;
 mod working_copy;
+pub mod fixtures;
 
 pub use amend::{amend, head_is_published};
 pub use blame::{query_blame, BlameLine, BlameOptions};
