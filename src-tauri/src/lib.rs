@@ -21,7 +21,11 @@ use repo_state::{
     HistorySearchResult, IgnoreExplanation, IgnoreTarget, OpenOutcome, RepositoryState, Resolved,
     SubmoduleState, WorkingCopyStatus,
 };
-use repo_state::{add_ignore_rule, check_ignore};
+use repo_state::{
+    add_ignore_rule, check_ignore, checkout_branch, compare_branches, create_branch,
+    create_tracking_branch, delete_branch, query_branches, rename_branch, stash_and_checkout,
+    BranchComparison, BranchEntry, CheckoutOutcome, DeleteBranchOutcome,
+};
 use serde::Serialize;
 use settings::{Bookmark, BookmarksState, Settings, SettingsLoadResult};
 use std::sync::Mutex;
@@ -587,6 +591,93 @@ fn get_desktop_palette() -> Result<Option<DesktopPalette>, String> {
     desktop_theme::read_published_palette()
 }
 
+#[tauri::command]
+async fn get_branches(
+    state: State<'_, AppState>,
+    root: String,
+) -> Result<Vec<BranchEntry>, String> {
+    let root = PathBuf::from(root);
+    query_branches(&state.process_layer, &root).await
+}
+
+#[tauri::command]
+async fn create_branch_command(
+    state: State<'_, AppState>,
+    root: String,
+    name: String,
+    start_point: Option<String>,
+    checkout: bool,
+) -> Result<(), String> {
+    let root = PathBuf::from(root);
+    create_branch(&state.process_layer, &root, &name, start_point.as_deref(), checkout).await
+}
+
+#[tauri::command]
+async fn create_tracking_branch_command(
+    state: State<'_, AppState>,
+    root: String,
+    name: String,
+    remote_branch: String,
+    checkout: bool,
+) -> Result<(), String> {
+    let root = PathBuf::from(root);
+    create_tracking_branch(&state.process_layer, &root, &name, &remote_branch, checkout).await
+}
+
+#[tauri::command]
+async fn rename_branch_command(
+    state: State<'_, AppState>,
+    root: String,
+    old_name: String,
+    new_name: String,
+) -> Result<(), String> {
+    let root = PathBuf::from(root);
+    rename_branch(&state.process_layer, &root, &old_name, &new_name).await
+}
+
+#[tauri::command]
+async fn delete_branch_command(
+    state: State<'_, AppState>,
+    root: String,
+    name: String,
+    force: bool,
+) -> Result<DeleteBranchOutcome, String> {
+    let root = PathBuf::from(root);
+    delete_branch(&state.process_layer, &root, &name, force).await
+}
+
+#[tauri::command]
+async fn checkout_branch_command(
+    state: State<'_, AppState>,
+    root: String,
+    name: String,
+) -> Result<CheckoutOutcome, String> {
+    let root = PathBuf::from(root);
+    checkout_branch(&state.process_layer, &root, &name).await
+}
+
+#[tauri::command]
+async fn stash_and_checkout_command(
+    state: State<'_, AppState>,
+    root: String,
+    target: String,
+    message: Option<String>,
+) -> Result<(), String> {
+    let root = PathBuf::from(root);
+    stash_and_checkout(&state.process_layer, &root, &target, message.as_deref()).await
+}
+
+#[tauri::command]
+async fn compare_branches_command(
+    state: State<'_, AppState>,
+    root: String,
+    base: String,
+    target: String,
+) -> Result<BranchComparison, String> {
+    let root = PathBuf::from(root);
+    compare_branches(&state.process_layer, &root, &base, &target).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt::init();
@@ -651,6 +742,14 @@ pub fn run() {
             get_operation_log,
             init_repository,
             get_desktop_palette,
+            get_branches,
+            create_branch_command,
+            create_tracking_branch_command,
+            rename_branch_command,
+            delete_branch_command,
+            checkout_branch_command,
+            stash_and_checkout_command,
+            compare_branches_command,
         ])
         .setup(|app| {
             let watch_dir = desktop_theme::published_theme_watch_dir();

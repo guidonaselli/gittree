@@ -2,6 +2,7 @@
 
 mod amend;
 mod blame;
+mod branches;
 mod commit;
 mod commit_detail;
 mod diff;
@@ -21,6 +22,11 @@ pub mod fixtures;
 
 pub use amend::{amend, head_is_published};
 pub use blame::{query_blame, BlameLine, BlameOptions};
+pub use branches::{
+    checkout_branch, compare_branches, create_branch, create_tracking_branch, delete_branch,
+    query_branches, rename_branch, stash_and_checkout, BranchComparison, BranchComparisonFile,
+    BranchEntry, CheckoutOutcome, DeleteBranchOutcome,
+};
 pub use commit::{commit, CommitOptions};
 pub use commit_detail::{query_commit_detail, CommitDetail, FileStat, SignatureState};
 pub use diff::{

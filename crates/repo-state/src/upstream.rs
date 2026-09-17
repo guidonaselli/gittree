@@ -3,7 +3,7 @@ use tokio_util::sync::CancellationToken;
 
 /// The basis used to compute remote divergence: a configured `@{u}`, an
 /// inferred `<remote>/<branch>`, or none.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum UpstreamBasis {
     Configured { refname: String },
     Inferred { refname: String },

@@ -192,3 +192,55 @@ export interface IgnoreExplanation {
   pattern: string;
   path: string;
 }
+
+export interface CommitSummary {
+  sha: string;
+  parents: string[];
+  author_name: string;
+  author_email: string;
+  author_date: string;
+  subject: string;
+  rename_from?: string | null;
+  path_at_commit?: string | null;
+}
+
+export interface BranchEntry {
+  name: string;
+  is_head: boolean;
+  is_remote: boolean;
+  target_commit: string;
+  commit_subject: string;
+  upstream: string | null;
+  ahead_behind: [number, number] | null;
+  upstream_basis: UpstreamBasis;
+}
+
+export interface BranchComparisonFile {
+  path: string;
+  status: string;
+}
+
+export interface BranchComparison {
+  base: string;
+  target: string;
+  ahead: number;
+  behind: number;
+  ahead_commits: CommitSummary[];
+  behind_commits: CommitSummary[];
+  changed_files: BranchComparisonFile[];
+}
+
+export type CheckoutOutcome =
+  | { status: "Success" }
+  | { status: "Conflict"; target: string; conflicting_files: string[]; message: string };
+
+export type DeleteBranchOutcome =
+  | { status: "Deleted" }
+  | {
+      status: "UnmergedGuard";
+      branch: string;
+      tip_commit: string;
+      commits: CommitSummary[];
+      recovery_hint: string;
+    };
+

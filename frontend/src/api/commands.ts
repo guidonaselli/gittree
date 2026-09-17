@@ -1,6 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   Bookmark,
+  BranchComparison,
+  BranchEntry,
+  CheckoutOutcome,
+  CommitSummary,
+  DeleteBranchOutcome,
   DesktopPalette,
   FileDiff,
   IgnoreExplanation,
@@ -189,16 +194,7 @@ export type HistoryScope =
   | { kind: "AllRefs" }
   | { kind: "Path"; path: string };
 
-export interface CommitSummary {
-  sha: string;
-  parents: string[];
-  author_name: string;
-  author_email: string;
-  author_date: string;
-  subject: string;
-  rename_from?: string | null;
-  path_at_commit?: string | null;
-}
+export type { CommitSummary } from "./types";
 
 export interface HistoricalFile {
   content: string;
@@ -361,3 +357,94 @@ export function getOperationLog(): Promise<LogEntry[]> {
 export function getDesktopPalette(): Promise<DesktopPalette | null> {
   return invoke<DesktopPalette | null>("get_desktop_palette");
 }
+
+export function getBranches(root: string): Promise<BranchEntry[]> {
+  return invoke<BranchEntry[]>("get_branches", { root });
+}
+
+export function createBranch(
+  root: string,
+  name: string,
+  startPoint: string | null = null,
+  checkout = false
+): Promise<void> {
+  return invoke<void>("create_branch_command", {
+    root,
+    name,
+    startPoint,
+    checkout,
+  });
+}
+
+export function createTrackingBranch(
+  root: string,
+  name: string,
+  remoteBranch: string,
+  checkout = false
+): Promise<void> {
+  return invoke<void>("create_tracking_branch_command", {
+    root,
+    name,
+    remoteBranch,
+    checkout,
+  });
+}
+
+export function renameBranch(
+  root: string,
+  oldName: string,
+  newName: string
+): Promise<void> {
+  return invoke<void>("rename_branch_command", {
+    root,
+    oldName,
+    newName,
+  });
+}
+
+export function deleteBranch(
+  root: string,
+  name: string,
+  force = false
+): Promise<DeleteBranchOutcome> {
+  return invoke<DeleteBranchOutcome>("delete_branch_command", {
+    root,
+    name,
+    force,
+  });
+}
+
+export function checkoutBranch(
+  root: string,
+  name: string
+): Promise<CheckoutOutcome> {
+  return invoke<CheckoutOutcome>("checkout_branch_command", {
+    root,
+    name,
+  });
+}
+
+export function stashAndCheckout(
+  root: string,
+  target: string,
+  message: string | null = null
+): Promise<void> {
+  return invoke<void>("stash_and_checkout_command", {
+    root,
+    target,
+    message,
+  });
+}
+
+export function compareBranches(
+  root: string,
+  base: string,
+  target: string
+): Promise<BranchComparison> {
+  return invoke<BranchComparison>("compare_branches_command", {
+    root,
+    base,
+    target,
+  });
+}
+
