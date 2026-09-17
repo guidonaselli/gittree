@@ -1,6 +1,9 @@
-# GitTree
+<div align="center">
+  <img src="frontend/public/logo.png" alt="GitTree Logo" width="120" />
+  <h1>GitTree</h1>
+  <p>A fast desktop Git client (Tauri 2 + Rust + Solid) built around a submodule workspace: one live matrix of every submodule's branch, its divergence from the commit the superproject records, its divergence from its remote, and its dirtiness.</p>
+</div>
 
-A Linux desktop Git client (Tauri 2 + Rust + Solid) built around a submodule workspace: one live matrix of every submodule's branch, its divergence from the commit the superproject records, its divergence from its remote, and its dirtiness.
 
 ## Develop
 
