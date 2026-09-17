@@ -386,7 +386,10 @@ export const App: Component = () => {
   return (
     <div class="app-shell">
       <div class="app-titlebar">
-        <span>GitTree</span>
+        <div class="app-title-brand">
+          <img src="/logo.png" alt="GitTree" class="app-title-logo" />
+          <span>GitTree</span>
+        </div>
         <Show when={workspace.activeGroup()}>
           <button class="collapse-toggle" onClick={refreshAll}>
             Refresh
