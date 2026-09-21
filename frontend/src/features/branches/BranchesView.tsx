@@ -17,6 +17,7 @@ import {
   type DeleteBranchOutcome,
 } from "../../api/types";
 import "./branches.css";
+import { MergeModal } from "../integration/MergeModal";
 
 export interface BranchesViewProps {
   root: string;
@@ -39,6 +40,7 @@ export const BranchesView: Component<BranchesViewProps> = (props) => {
   const [createTrackingTarget, setCreateTrackingTarget] = createSignal<string | null>(null);
   const [renameTarget, setRenameTarget] = createSignal<BranchEntry | null>(null);
   const [compareTarget, setCompareTarget] = createSignal<{ base: string; target: string } | null>(null);
+  const [mergeTarget, setMergeTarget] = createSignal<string | null>(null);
 
   // Guard Modals state
   const [checkoutConflict, setCheckoutConflict] = createSignal<{
@@ -144,6 +146,16 @@ export const BranchesView: Component<BranchesViewProps> = (props) => {
           class="branches-btn"
           onClick={() => {
             const head = currentHeadBranch();
+            const firstOther = branches()?.find((b) => b.name !== head && !b.is_remote)?.name ?? "";
+            setMergeTarget(firstOther);
+          }}
+        >
+          Merge into current...
+        </button>
+        <button
+          class="branches-btn"
+          onClick={() => {
+            const head = currentHeadBranch();
             const firstOther = branches()?.find((b) => b.name !== head)?.name ?? head;
             setCompareTarget({ base: head, target: firstOther });
           }}
@@ -220,6 +232,13 @@ export const BranchesView: Component<BranchesViewProps> = (props) => {
                       >
                         Checkout
                       </button>
+                      <button
+                        class="branches-btn"
+                        onClick={() => setMergeTarget(branch.name)}
+                        title={`Merge ${branch.name} into ${currentHeadBranch()}`}
+                      >
+                        Merge
+                      </button>
                     </Show>
                     <button
                       class="branches-btn"
@@ -273,6 +292,13 @@ export const BranchesView: Component<BranchesViewProps> = (props) => {
                     onClick={() => setCreateTrackingTarget(branch.name)}
                   >
                     Track in new local branch...
+                  </button>
+                  <button
+                    class="branches-btn"
+                    onClick={() => setMergeTarget(branch.name)}
+                    title={`Merge ${branch.name} into ${currentHeadBranch()}`}
+                  >
+                    Merge
                   </button>
                   <button
                     class="branches-btn"
@@ -472,6 +498,33 @@ export const BranchesView: Component<BranchesViewProps> = (props) => {
             onClose={() => setCompareTarget(null)}
           />
         )}
+      </Show>
+
+      {/* Merge Modal */}
+      <Show when={mergeTarget() !== null}>
+        <MergeModal
+          root={props.root}
+          defaultTarget={mergeTarget()!}
+          onClose={() => setMergeTarget(null)}
+          onSuccess={(_newHead, isFf) => {
+            setMergeTarget(null);
+            refetchBranches();
+            setActionNotice(
+              isFf
+                ? "Fast-forward merge completed."
+                : "Merge commit created successfully."
+            );
+            setTimeout(() => setActionNotice(null), 5000);
+          }}
+          onConflict={(conflicts) => {
+            setMergeTarget(null);
+            refetchBranches();
+            setErrorMessage(
+              `Merge encountered conflicts in ${conflicts.length} file(s). Resolve conflicts in your working copy.`
+            );
+          }}
+          onNavigateWorkingCopy={props.onNavigateWorkingCopy}
+        />
       </Show>
     </div>
   );

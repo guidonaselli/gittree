@@ -142,6 +142,9 @@ impl ProcessLayer {
         for (k, v) in pinned_env(false) {
             cmd.env(k, v);
         }
+        for (k, v) in &call.extra_env {
+            cmd.env(k, v);
+        }
 
         let started = Instant::now();
         let mut child = cmd.spawn()?;

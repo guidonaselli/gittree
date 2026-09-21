@@ -5,6 +5,7 @@ import {
   type CommitOptions,
   commitWorkingCopy,
   deleteUntrackedWorkingCopyPaths,
+  getActiveOperation,
   getCommitMessageTemplate,
   discardWorkingCopyPaths,
   cancelWorkingCopyStatus,
@@ -38,6 +39,7 @@ import { PALETTE_TOKENS, resolveTheme } from "./theme/apply-palette";
 import { OperationLogView } from "./features/operation-log/OperationLogView";
 import { RepositoryStatus } from "./features/repository/RepositoryStatus";
 import { SubmoduleMatrix } from "./features/submodules/SubmoduleMatrix";
+import { ActiveOperationBanner } from "./features/integration/ActiveOperationBanner";
 import {
   useDetailPanelCollapsed,
   useDetailPanelWidth,
@@ -54,6 +56,7 @@ import "./features/working-copy/working-copy.css";
 import "./features/history/history.css";
 import "./features/submodules/submodule-matrix.css";
 import "./features/operation-log/operation-log.css";
+import "./features/integration/integration.css";
 import "./workspace/workspace.css";
 
 function clamp(value: number, min: number, max: number): number {
@@ -129,6 +132,19 @@ export const App: Component = () => {
     return status;
   });
 
+  const [integrationNotice, setIntegrationNotice] = createSignal<string | null>(null);
+  const [activeOperation, { refetch: refetchActiveOperation }] = createResource(
+    activeViewPath,
+    async (path) => {
+      if (!path) return null;
+      try {
+        return await getActiveOperation(path);
+      } catch {
+        return null;
+      }
+    }
+  );
+
   function hasUncommittedChanges(): boolean {
     const status = workingCopy();
     if (!status || !isKnown(status)) return false;
@@ -146,6 +162,7 @@ export const App: Component = () => {
       refetchRepoState();
       refetchSubmodules();
       refetchWorkingCopy();
+      refetchActiveOperation();
     }
   }
 
@@ -521,6 +538,28 @@ export const App: Component = () => {
                   onOpenBranches={() => setMainView("branches")}
                   onOpenTags={() => setMainView("tags")}
                   onOpenStashes={() => setMainView("stashes")}
+                />
+              )}
+            </Show>
+            <Show when={integrationNotice()}>
+              {(msg) => (
+                <div class="integration-notice" style={{ padding: "var(--space-2) var(--space-4)", "background-color": "var(--color-bg-subtle)", "border-bottom": "1px solid var(--color-border-subtle)", display: "flex", "align-items": "center", "justify-content": "space-between" }}>
+                  <span>{msg()}</span>
+                  <button class="collapse-toggle" onClick={() => setIntegrationNotice(null)}>Dismiss</button>
+                </div>
+              )}
+            </Show>
+            <Show when={activeOperation()}>
+              {(op) => (
+                <ActiveOperationBanner
+                  root={activeViewPath()!}
+                  operation={op()}
+                  onOperationUpdated={() => invalidate(activeViewPath()!)}
+                  onOperationAborted={(outcome) => {
+                    setIntegrationNotice(outcome.summary);
+                    invalidate(activeViewPath()!);
+                  }}
+                  onNavigateWorkingCopy={() => setMainView("working-copy")}
                 />
               )}
             </Show>

@@ -14,6 +14,9 @@ export const CommitDetailView: Component<{
   onSelectFileHistory?: (path: string) => void;
   onOpenBlame?: (path: string, rev: string) => void;
   onViewRevision?: (path: string, rev: string) => void;
+  onStartRebase?: (baseSha: string, subject: string) => void;
+  onStartCherryPick?: (sha: string, subject: string) => void;
+  onStartRevert?: (sha: string, subject: string) => void;
 }> = (props) => {
   const [parentIndex, setParentIndex] = createSignal<number | undefined>(undefined);
   const [detail] = createResource(
@@ -41,6 +44,35 @@ export const CommitDetailView: Component<{
               </div>
             </Show>
             <p class="commit-detail-subject">{d().subject}</p>
+            <div class="commit-detail-actions" style={{ display: "flex", "flex-wrap": "wrap", gap: "var(--space-2)", "margin": "var(--space-2) 0" }}>
+              <Show when={props.onStartRebase}>
+                <button
+                  class="working-copy-action"
+                  onClick={() => props.onStartRebase!(props.sha, d().subject)}
+                  title="Rebase interactively onto this commit"
+                >
+                  Rebase from here...
+                </button>
+              </Show>
+              <Show when={props.onStartCherryPick}>
+                <button
+                  class="working-copy-action"
+                  onClick={() => props.onStartCherryPick!(props.sha, d().subject)}
+                  title="Cherry-pick this commit into HEAD"
+                >
+                  Cherry-pick...
+                </button>
+              </Show>
+              <Show when={props.onStartRevert}>
+                <button
+                  class="working-copy-action"
+                  onClick={() => props.onStartRevert!(props.sha, d().subject)}
+                  title="Revert this commit"
+                >
+                  Revert...
+                </button>
+              </Show>
+            </div>
             <Show when={d().body}>
               <pre class="commit-detail-body">{d().body}</pre>
             </Show>

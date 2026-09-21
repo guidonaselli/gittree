@@ -15,6 +15,9 @@ import { CommitDetailView } from "./CommitDetailView";
 import { HistoricalFileView } from "./HistoricalFileView";
 import { RevisionDiffView } from "./RevisionDiffView";
 import { BlameView } from "../working-copy/BlameView";
+import { InteractiveRebaseModal } from "../integration/InteractiveRebaseModal";
+import { CherryPickModal } from "../integration/CherryPickModal";
+import { RevertModal } from "../integration/RevertModal";
 
 const ROW_HEIGHT = 24;
 const PAGE_SIZE = 100;
@@ -57,6 +60,10 @@ export const HistoryView: Component<{
   const [isSearching, setIsSearching] = createSignal(false);
   const [searchResults, setSearchResults] = createSignal<HistorySearchResult | null>(null);
   const [searchError, setSearchError] = createSignal<string | null>(null);
+  const [rebaseTarget, setRebaseTarget] = createSignal<{ baseSha: string; subject: string } | null>(null);
+  const [cherryPickTarget, setCherryPickTarget] = createSignal<{ sha: string; subject: string } | null>(null);
+  const [revertTarget, setRevertTarget] = createSignal<{ sha: string; subject: string } | null>(null);
+  const [integrationNotice, setIntegrationNotice] = createSignal<string | null>(null);
 
   async function executeSearch(loadMore = false) {
     const q = searchQuery().trim();
@@ -665,6 +672,84 @@ export const HistoryView: Component<{
             }}
             onOpenBlame={(p, rev) => setBlameFile({ path: p, rev })}
             onViewRevision={(p, rev) => setHistoricalFile({ path: p, rev })}
+            onStartRebase={(baseSha, subject) => setRebaseTarget({ baseSha, subject })}
+            onStartCherryPick={(sha, subject) => setCherryPickTarget({ sha, subject })}
+            onStartRevert={(sha, subject) => setRevertTarget({ sha, subject })}
+          />
+        )}
+      </Show>
+
+      <Show when={integrationNotice()}>
+        {(msg) => (
+          <div class="integration-notice" style={{ padding: "var(--space-2) var(--space-4)", "background-color": "var(--color-bg-subtle)", "border-bottom": "1px solid var(--color-border-subtle)", display: "flex", "align-items": "center", "justify-content": "space-between" }}>
+            <span>{msg()}</span>
+            <button class="collapse-toggle" onClick={() => setIntegrationNotice(null)}>Dismiss</button>
+          </div>
+        )}
+      </Show>
+
+      <Show when={rebaseTarget()}>
+        {(target) => (
+          <InteractiveRebaseModal
+            root={props.root}
+            baseRef={target().baseSha}
+            baseDescription={target().subject}
+            onClose={() => setRebaseTarget(null)}
+            onSuccess={() => {
+              setRebaseTarget(null);
+              setIntegrationNotice("Interactive rebase completed successfully.");
+              setVersion((v) => v + 1);
+            }}
+            onPaused={(_conflicts, msg) => {
+              setRebaseTarget(null);
+              setIntegrationNotice(`Rebase paused: ${msg}`);
+              setVersion((v) => v + 1);
+            }}
+            onNavigateWorkingCopy={props.onSelectUncommitted}
+          />
+        )}
+      </Show>
+
+      <Show when={cherryPickTarget()}>
+        {(target) => (
+          <CherryPickModal
+            root={props.root}
+            defaultCommit={target().sha}
+            defaultSubject={target().subject}
+            onClose={() => setCherryPickTarget(null)}
+            onSuccess={(_newHead) => {
+              setCherryPickTarget(null);
+              setIntegrationNotice("Cherry-pick applied successfully.");
+              setVersion((v) => v + 1);
+            }}
+            onConflict={(_conflicts, msg) => {
+              setCherryPickTarget(null);
+              setIntegrationNotice(`Cherry-pick paused: ${msg}`);
+              setVersion((v) => v + 1);
+            }}
+            onNavigateWorkingCopy={props.onSelectUncommitted}
+          />
+        )}
+      </Show>
+
+      <Show when={revertTarget()}>
+        {(target) => (
+          <RevertModal
+            root={props.root}
+            defaultCommit={target().sha}
+            defaultSubject={target().subject}
+            onClose={() => setRevertTarget(null)}
+            onSuccess={(_newHead) => {
+              setRevertTarget(null);
+              setIntegrationNotice("Revert completed successfully.");
+              setVersion((v) => v + 1);
+            }}
+            onConflict={(_conflicts, msg) => {
+              setRevertTarget(null);
+              setIntegrationNotice(`Revert paused: ${msg}`);
+              setVersion((v) => v + 1);
+            }}
+            onNavigateWorkingCopy={props.onSelectUncommitted}
           />
         )}
       </Show>

@@ -1,22 +1,34 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AbortOutcome,
+  ActiveOperationDetail,
   Bookmark,
   BranchComparison,
   BranchEntry,
   CheckoutOutcome,
+  CherryPickOptions,
+  CherryPickOutcome,
   CommitSummary,
   CreateStashOptions,
   CreateTagOptions,
   DeleteBranchOutcome,
   DesktopPalette,
+  DirtyTreeDetails,
   FileDiff,
   IgnoreExplanation,
   IgnoreTarget,
   LogEntry,
+  MergeOptions,
+  MergeOutcome,
   OpenRepositoryResult,
+  OperationStepOutcome,
   PushTagOptions,
+  RebaseOutcome,
+  RebasePlanItem,
   RepositoryState,
   Resolved,
+  RevertOptions,
+  RevertOutcome,
   Settings,
   SettingsLoadResult,
   StashApplyOutcome,
@@ -523,5 +535,66 @@ export function dropStash(root: string, selector: string): Promise<void> {
 
 export function clearStashes(root: string): Promise<void> {
   return invoke<void>("clear_stashes_command", { root });
+}
+
+// Integration Operations
+export function getActiveOperation(root: string): Promise<ActiveOperationDetail | null> {
+  return invoke<ActiveOperationDetail | null>("get_active_operation", { root });
+}
+
+export function getConflictingFiles(root: string): Promise<string[]> {
+  return invoke<string[]>("get_conflicting_files", { root });
+}
+
+export function checkDirtyWorkingCopy(root: string): Promise<DirtyTreeDetails | null> {
+  return invoke<DirtyTreeDetails | null>("check_dirty_working_copy", { root });
+}
+
+export function startMerge(
+  root: string,
+  targetRef: string,
+  options: MergeOptions
+): Promise<MergeOutcome> {
+  return invoke<MergeOutcome>("start_merge_command", { root, targetRef, options });
+}
+
+export function startCherryPick(
+  root: string,
+  commitRef: string,
+  options: CherryPickOptions
+): Promise<CherryPickOutcome> {
+  return invoke<CherryPickOutcome>("start_cherry_pick_command", { root, commitRef, options });
+}
+
+export function startRevert(
+  root: string,
+  commitRef: string,
+  options: RevertOptions
+): Promise<RevertOutcome> {
+  return invoke<RevertOutcome>("start_revert_command", { root, commitRef, options });
+}
+
+export function getRebasePlan(root: string, baseRef: string): Promise<RebasePlanItem[]> {
+  return invoke<RebasePlanItem[]>("get_rebase_plan", { root, baseRef });
+}
+
+export function startInteractiveRebase(
+  root: string,
+  baseRef: string,
+  plan: RebasePlanItem[]
+): Promise<RebaseOutcome> {
+  return invoke<RebaseOutcome>("start_interactive_rebase_command", { root, baseRef, plan });
+}
+
+export function continueOperation(root: string): Promise<OperationStepOutcome> {
+  return invoke<OperationStepOutcome>("continue_operation_command", { root });
+}
+
+export function skipOperation(root: string): Promise<OperationStepOutcome> {
+  return invoke<OperationStepOutcome>("skip_operation_command", { root });
+}
+
+export function abortOperation(root: string): Promise<AbortOutcome> {
+  return invoke<AbortOutcome>("abort_operation_command", { root });
 }
 

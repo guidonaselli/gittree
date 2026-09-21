@@ -10,6 +10,7 @@ mod discard;
 mod graph;
 mod history;
 mod ignore;
+mod integration;
 mod message_template;
 mod resolve;
 mod resolved;
@@ -45,6 +46,14 @@ pub use history::{
 pub use ignore::{
     add_ignore_rule, check_ignore, compute_ignore_pattern, IgnoreExplanation, IgnorePatternKind,
     IgnoreTarget,
+};
+pub use integration::{
+    abort_operation, check_dirty_tree, continue_operation, query_active_operation,
+    query_conflicting_files, query_rebase_plan, skip_operation, start_cherry_pick, start_interactive_rebase,
+    start_merge, start_revert, AbortOutcome, ActiveOperationDetail, ActiveOperationKind,
+    CherryPickOptions, CherryPickOutcome, DirtyTreeDetails, MergeOptions, MergeOutcome,
+    OperationStepOutcome, RebaseAction, RebaseOutcome, RebasePlanItem, RevertOptions,
+    RevertOutcome,
 };
 pub use message_template::{commit_message_template, CommitMessageTemplate};
 pub use resolve::{init_repository, resolve_open, OpenOutcome};

@@ -309,3 +309,172 @@ export type StashApplyOutcome =
       stash_retained: boolean;
     };
 
+export type ActiveOperationKind = "Merge" | "Rebase" | "CherryPick" | "Revert";
+
+export interface ActiveOperationDetail {
+  kind: ActiveOperationKind;
+  title: string;
+  description: string;
+  conflicting_files: string[];
+  head_commit: string | null;
+  target_ref: string | null;
+  current_commit_msg: string | null;
+  rebase_current_step: number | null;
+  rebase_total_steps: number | null;
+  can_skip: boolean;
+}
+
+export interface DirtyTreeDetails {
+  staged_count: number;
+  unstaged_count: number;
+  untracked_count: number;
+  summary: string;
+}
+
+export interface MergeOptions {
+  no_ff: boolean;
+  ff_only: boolean;
+  squash: boolean;
+  message?: string | null;
+}
+
+export type MergeOutcome =
+  | {
+      status: "Success";
+      new_head: string;
+      is_fast_forward: boolean;
+      is_squash: boolean;
+      message: string;
+    }
+  | {
+      status: "Conflict";
+      conflicting_files: string[];
+      message: string;
+    }
+  | {
+      status: "DirtyTreeRefusal";
+      staged_count: number;
+      unstaged_count: number;
+      untracked_count: number;
+      summary: string;
+    };
+
+export interface CherryPickOptions {
+  no_commit: boolean;
+  signoff: boolean;
+}
+
+export type CherryPickOutcome =
+  | {
+      status: "Success";
+      new_head: string;
+      message: string;
+    }
+  | {
+      status: "Conflict";
+      conflicting_files: string[];
+      message: string;
+    }
+  | {
+      status: "DirtyTreeRefusal";
+      staged_count: number;
+      unstaged_count: number;
+      untracked_count: number;
+      summary: string;
+    };
+
+export interface RevertOptions {
+  no_commit: boolean;
+}
+
+export type RevertOutcome =
+  | {
+      status: "Success";
+      new_head: string;
+      message: string;
+    }
+  | {
+      status: "Conflict";
+      conflicting_files: string[];
+      message: string;
+    }
+  | {
+      status: "DirtyTreeRefusal";
+      staged_count: number;
+      unstaged_count: number;
+      untracked_count: number;
+      summary: string;
+    };
+
+export type RebaseAction =
+  | "Pick"
+  | "Reword"
+  | "Edit"
+  | "Squash"
+  | "Fixup"
+  | "Drop";
+
+export interface RebasePlanItem {
+  commit: string;
+  short_commit: string;
+  author: string;
+  date: string;
+  subject: string;
+  action: RebaseAction;
+  new_message?: string | null;
+}
+
+export type RebaseOutcome =
+  | {
+      status: "Success";
+      new_head: string;
+      message: string;
+    }
+  | {
+      status: "Paused";
+      stopped_sha: string | null;
+      conflicting_files: string[];
+      message: string;
+    }
+  | {
+      status: "DirtyTreeRefusal";
+      staged_count: number;
+      unstaged_count: number;
+      untracked_count: number;
+      summary: string;
+    };
+
+export type OperationStepOutcome =
+  | {
+      status: "Completed";
+      new_head: string;
+      message: string;
+    }
+  | {
+      status: "StillInProgress";
+      kind: ActiveOperationKind;
+      title: string;
+      description: string;
+      conflicting_files: string[];
+      head_commit: string | null;
+      target_ref: string | null;
+      current_commit_msg: string | null;
+      rebase_current_step: number | null;
+      rebase_total_steps: number | null;
+      can_skip: boolean;
+    }
+  | {
+      status: "Failed";
+      message: string;
+    };
+
+export interface AbortOutcome {
+  operation: string;
+  restored_head: string;
+  restored_head_short: string;
+  restored_head_subject: string;
+  restored_branch: string;
+  working_tree_clean: boolean;
+  summary: string;
+}
+

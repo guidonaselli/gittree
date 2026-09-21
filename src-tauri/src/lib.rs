@@ -32,6 +32,13 @@ use repo_state::{
     CreateStashOptions, CreateTagOptions, PushTagOptions, StashApplyOutcome, StashDetail,
     StashEntry, TagEntry,
 };
+use repo_state::{
+    abort_operation, check_dirty_tree, continue_operation, query_active_operation,
+    query_conflicting_files, query_rebase_plan, skip_operation, start_cherry_pick,
+    start_interactive_rebase, start_merge, start_revert, AbortOutcome, ActiveOperationDetail,
+    CherryPickOptions, CherryPickOutcome, DirtyTreeDetails, MergeOptions, MergeOutcome,
+    OperationStepOutcome, RebaseOutcome, RebasePlanItem, RevertOptions, RevertOutcome,
+};
 use serde::Serialize;
 use settings::{Bookmark, BookmarksState, Settings, SettingsLoadResult};
 use std::sync::Mutex;
@@ -816,6 +823,114 @@ async fn clear_stashes_command(
     clear_stashes(&state.process_layer, &root).await
 }
 
+#[tauri::command]
+async fn get_active_operation(
+    state: State<'_, AppState>,
+    root: String,
+) -> Result<Option<ActiveOperationDetail>, String> {
+    let root = PathBuf::from(root);
+    query_active_operation(&state.process_layer, &root).await
+}
+
+#[tauri::command]
+async fn get_conflicting_files(
+    state: State<'_, AppState>,
+    root: String,
+) -> Result<Vec<String>, String> {
+    let root = PathBuf::from(root);
+    query_conflicting_files(&state.process_layer, &root).await
+}
+
+#[tauri::command]
+async fn check_dirty_working_copy(
+    state: State<'_, AppState>,
+    root: String,
+) -> Result<Option<DirtyTreeDetails>, String> {
+    let root = PathBuf::from(root);
+    check_dirty_tree(&state.process_layer, &root).await
+}
+
+#[tauri::command]
+async fn start_merge_command(
+    state: State<'_, AppState>,
+    root: String,
+    target_ref: String,
+    options: MergeOptions,
+) -> Result<MergeOutcome, String> {
+    let root = PathBuf::from(root);
+    start_merge(&state.process_layer, &root, &target_ref, options).await
+}
+
+#[tauri::command]
+async fn start_cherry_pick_command(
+    state: State<'_, AppState>,
+    root: String,
+    commit_ref: String,
+    options: CherryPickOptions,
+) -> Result<CherryPickOutcome, String> {
+    let root = PathBuf::from(root);
+    start_cherry_pick(&state.process_layer, &root, &commit_ref, options).await
+}
+
+#[tauri::command]
+async fn start_revert_command(
+    state: State<'_, AppState>,
+    root: String,
+    commit_ref: String,
+    options: RevertOptions,
+) -> Result<RevertOutcome, String> {
+    let root = PathBuf::from(root);
+    start_revert(&state.process_layer, &root, &commit_ref, options).await
+}
+
+#[tauri::command]
+async fn get_rebase_plan(
+    state: State<'_, AppState>,
+    root: String,
+    base_ref: String,
+) -> Result<Vec<RebasePlanItem>, String> {
+    let root = PathBuf::from(root);
+    query_rebase_plan(&state.process_layer, &root, &base_ref).await
+}
+
+#[tauri::command]
+async fn start_interactive_rebase_command(
+    state: State<'_, AppState>,
+    root: String,
+    base_ref: String,
+    plan: Vec<RebasePlanItem>,
+) -> Result<RebaseOutcome, String> {
+    let root = PathBuf::from(root);
+    start_interactive_rebase(&state.process_layer, &root, &base_ref, plan).await
+}
+
+#[tauri::command]
+async fn continue_operation_command(
+    state: State<'_, AppState>,
+    root: String,
+) -> Result<OperationStepOutcome, String> {
+    let root = PathBuf::from(root);
+    continue_operation(&state.process_layer, &root).await
+}
+
+#[tauri::command]
+async fn skip_operation_command(
+    state: State<'_, AppState>,
+    root: String,
+) -> Result<OperationStepOutcome, String> {
+    let root = PathBuf::from(root);
+    skip_operation(&state.process_layer, &root).await
+}
+
+#[tauri::command]
+async fn abort_operation_command(
+    state: State<'_, AppState>,
+    root: String,
+) -> Result<AbortOutcome, String> {
+    let root = PathBuf::from(root);
+    abort_operation(&state.process_layer, &root).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt::init();
@@ -901,6 +1016,17 @@ pub fn run() {
             pop_stash_command,
             drop_stash_command,
             clear_stashes_command,
+            get_active_operation,
+            get_conflicting_files,
+            check_dirty_working_copy,
+            start_merge_command,
+            start_cherry_pick_command,
+            start_revert_command,
+            get_rebase_plan,
+            start_interactive_rebase_command,
+            continue_operation_command,
+            skip_operation_command,
+            abort_operation_command,
         ])
         .setup(|app| {
             let watch_dir = desktop_theme::published_theme_watch_dir();

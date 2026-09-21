@@ -53,6 +53,7 @@ pub struct GitCall {
     pub repo_root: PathBuf,
     pub args: Vec<String>,
     pub stdin: Option<Vec<u8>>,
+    pub extra_env: Vec<(String, String)>,
 }
 
 impl GitCall {
@@ -64,11 +65,17 @@ impl GitCall {
             repo_root: repo_root.into(),
             args: args.into_iter().map(Into::into).collect(),
             stdin: None,
+            extra_env: Vec::new(),
         }
     }
 
     pub fn with_stdin(mut self, input: impl Into<Vec<u8>>) -> Self {
         self.stdin = Some(input.into());
+        self
+    }
+
+    pub fn with_env(mut self, key: impl Into<String>, val: impl Into<String>) -> Self {
+        self.extra_env.push((key.into(), val.into()));
         self
     }
 }
