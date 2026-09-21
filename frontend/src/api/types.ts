@@ -478,3 +478,60 @@ export interface AbortOutcome {
   summary: string;
 }
 
+export type SubmoduleCandidateCommit = {
+  sha: string;
+  short_sha: string;
+  author: string;
+  date: string;
+  subject: string;
+};
+
+export type SubmoduleConflictInfo = {
+  path: string;
+  ours_commit?: SubmoduleCandidateCommit | null;
+  theirs_commit?: SubmoduleCandidateCommit | null;
+  base_commit?: SubmoduleCandidateCommit | null;
+};
+
+export type ConflictMarkerInfo = {
+  has_markers: boolean;
+  marker_count: number;
+  marker_lines: number[];
+  preview_lines: string[];
+};
+
+export type ConflictItem = {
+  path: string;
+  conflict_type: "both_modified" | "both_added" | "both_deleted" | "delete_modify" | "rename_rename" | "submodule" | string;
+  conflict_code: string;
+  description: string;
+  is_submodule: boolean;
+  submodule_info?: SubmoduleConflictInfo | null;
+  marker_info?: ConflictMarkerInfo | null;
+  ours_exists: boolean;
+  theirs_exists: boolean;
+  base_exists: boolean;
+};
+
+export type ConflictResolution =
+  | { resolution_type: "ours" }
+  | { resolution_type: "theirs" }
+  | { resolution_type: "submodule_commit"; sha: string };
+
+export type MergetoolConfig = {
+  configured_tool: string | null;
+  available_tools: string[];
+};
+
+export type MergetoolOutcome = {
+  success: boolean;
+  exit_code: number;
+  stdout: string;
+  stderr: string;
+};
+
+export type StageOutcome =
+  | { status: "success" }
+  | { status: "marker_refusal"; file: string; marker_lines: number[]; preview_lines: string[] };
+
+

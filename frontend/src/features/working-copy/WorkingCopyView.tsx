@@ -18,16 +18,19 @@ import {
   type IgnoreTarget,
   type Resolved,
   type WorkingCopyStatus,
+  type ConflictItem,
 } from "../../api/types";
 import {
   addIgnoreRule,
   checkIgnorePath,
+  getConflicts,
   type CommitMessageTemplate,
   type CommitOptions,
 } from "../../api/commands";
 import { BlameView } from "./BlameView";
 import { CommitPanel } from "./CommitPanel";
 import { HunkDiffView } from "./HunkDiffView";
+import { ConflictedFilesView } from "../conflicts/ConflictedFilesView";
 
 function entryPathset(entry: ChangedEntry): string[] {
   return entry.rename_or_copy_from ? [entry.path, entry.rename_or_copy_from[0]] : [entry.path];
@@ -438,6 +441,42 @@ export const WorkingCopyView: Component<{
   const untracked = createMemo(() => known()?.untracked ?? []);
   const conflicted = createMemo(() => known()?.conflicted ?? []);
 
+  const [conflictItems, setConflictItems] = createSignal<ConflictItem[]>([]);
+
+  createEffect(async () => {
+    const clist = conflicted();
+    if (clist.length > 0) {
+      try {
+        const items = await getConflicts(props.root);
+        setConflictItems(items);
+      } catch {
+        setConflictItems(
+          clist.map((c) => ({
+            path: c.path,
+            conflict_type:
+              c.code === "UU"
+                ? "both_modified"
+                : c.code === "AA"
+                ? "both_added"
+                : c.code === "UD" || c.code === "DU"
+                ? "delete_modify"
+                : c.code === "UA" || c.code === "AU"
+                ? "rename_rename"
+                : "other",
+            conflict_code: c.code,
+            description: `Conflict (${c.code})`,
+            is_submodule: false,
+            ours_exists: true,
+            theirs_exists: true,
+            base_exists: true,
+          }))
+        );
+      }
+    } else {
+      setConflictItems([]);
+    }
+  });
+
   const allUnstagedPaths = createMemo(() => [...unstaged().flatMap(entryPathset), ...untracked()]);
   const allStagedPaths = createMemo(() => staged().flatMap(entryPathset));
 
@@ -527,17 +566,34 @@ export const WorkingCopyView: Component<{
           )}
         </Show>
         <Show when={conflicted().length > 0}>
-          <section class="working-copy-group">
-            <h3 class="text-danger">Conflicted ({conflicted().length})</h3>
-            <For each={conflicted()}>
-              {(c) => (
-                <div class="working-copy-entry">
-                  <span class="working-copy-code">{c.code}</span>
-                  <span class="working-copy-path">{c.path}</span>
-                </div>
-              )}
-            </For>
-          </section>
+          <ConflictedFilesView
+            root={props.root}
+            conflicts={
+              conflictItems().length > 0
+                ? conflictItems()
+                : conflicted().map((c) => ({
+                    path: c.path,
+                    conflict_type:
+                      c.code === "UU"
+                        ? "both_modified"
+                        : c.code === "AA"
+                        ? "both_added"
+                        : c.code === "UD" || c.code === "DU"
+                        ? "delete_modify"
+                        : c.code === "UA" || c.code === "AU"
+                        ? "rename_rename"
+                        : "other",
+                    conflict_code: c.code,
+                    description: `Conflict (${c.code})`,
+                    is_submodule: false,
+                    ours_exists: true,
+                    theirs_exists: true,
+                    base_exists: true,
+                  }))
+            }
+            onRefresh={props.onHunksChanged}
+            onStageFile={(path) => props.onStage([path])}
+          />
         </Show>
         <CommitPanel
           root={props.root}

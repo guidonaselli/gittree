@@ -9,6 +9,9 @@ import type {
   CherryPickOptions,
   CherryPickOutcome,
   CommitSummary,
+  ConflictItem,
+  ConflictMarkerInfo,
+  ConflictResolution,
   CreateStashOptions,
   CreateTagOptions,
   DeleteBranchOutcome,
@@ -20,6 +23,8 @@ import type {
   LogEntry,
   MergeOptions,
   MergeOutcome,
+  MergetoolConfig,
+  MergetoolOutcome,
   OpenRepositoryResult,
   OperationStepOutcome,
   PushTagOptions,
@@ -31,6 +36,7 @@ import type {
   RevertOutcome,
   Settings,
   SettingsLoadResult,
+  StageOutcome,
   StashApplyOutcome,
   StashDetail,
   StashEntry,
@@ -73,8 +79,12 @@ export function addIgnoreRule(root: string, target: IgnoreTarget, pattern: strin
   return invoke<void>("add_ignore_rule_command", { root, target, pattern });
 }
 
-export function stageWorkingCopyPaths(root: string, paths: string[]): Promise<void> {
-  return invoke<void>("stage_working_copy_paths", { root, paths });
+export function stageWorkingCopyPaths(
+  root: string,
+  paths: string[],
+  overrideMarkers = false
+): Promise<StageOutcome> {
+  return invoke<StageOutcome>("stage_working_copy_paths", { root, paths, overrideMarkers });
 }
 
 export function unstageWorkingCopyPaths(root: string, paths: string[]): Promise<void> {
@@ -597,4 +607,33 @@ export function skipOperation(root: string): Promise<OperationStepOutcome> {
 export function abortOperation(root: string): Promise<AbortOutcome> {
   return invoke<AbortOutcome>("abort_operation_command", { root });
 }
+
+export function getConflicts(root: string): Promise<ConflictItem[]> {
+  return invoke<ConflictItem[]>("get_conflicts", { root });
+}
+
+export function checkConflictMarkers(root: string, path: string): Promise<ConflictMarkerInfo | null> {
+  return invoke<ConflictMarkerInfo | null>("check_conflict_markers_command", { root, path });
+}
+
+export function resolveConflict(
+  root: string,
+  path: string,
+  resolution: ConflictResolution
+): Promise<void> {
+  return invoke<void>("resolve_conflict_command", { root, path, resolution });
+}
+
+export function launchMergetool(
+  root: string,
+  path: string,
+  tool?: string
+): Promise<MergetoolOutcome> {
+  return invoke<MergetoolOutcome>("launch_mergetool_command", { root, path, tool });
+}
+
+export function getMergetoolConfig(root: string): Promise<MergetoolConfig> {
+  return invoke<MergetoolConfig>("get_mergetool_config", { root });
+}
+
 

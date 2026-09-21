@@ -40,6 +40,7 @@ import { OperationLogView } from "./features/operation-log/OperationLogView";
 import { RepositoryStatus } from "./features/repository/RepositoryStatus";
 import { SubmoduleMatrix } from "./features/submodules/SubmoduleMatrix";
 import { ActiveOperationBanner } from "./features/integration/ActiveOperationBanner";
+import { ConflictMarkerGuardModal } from "./features/conflicts/ConflictMarkerGuardModal";
 import {
   useDetailPanelCollapsed,
   useDetailPanelWidth,
@@ -166,16 +167,33 @@ export const App: Component = () => {
     }
   }
 
-  async function stagePaths(paths: string[]) {
+  const [conflictMarkerRefusal, setConflictMarkerRefusal] = createSignal<{
+    paths: string[];
+    file: string;
+    marker_lines: number[];
+    preview_lines: string[];
+  } | null>(null);
+
+  async function stagePaths(paths: string[], overrideMarkers = false) {
     const root = activeViewPath();
     if (!root || paths.length === 0) return;
     try {
-      await stageWorkingCopyPaths(root, paths);
+      const outcome = await stageWorkingCopyPaths(root, paths, overrideMarkers);
+      if (outcome && outcome.status === "marker_refusal") {
+        setConflictMarkerRefusal({
+          paths,
+          file: outcome.file,
+          marker_lines: outcome.marker_lines,
+          preview_lines: outcome.preview_lines,
+        });
+        return;
+      }
       setStageError(null);
     } catch (err) {
       setStageError(String(err));
     } finally {
       invalidate(root);
+      refetchActiveOperation();
     }
   }
 
@@ -683,6 +701,22 @@ export const App: Component = () => {
           </aside>
         </Show>
       </div>
+
+      <Show when={conflictMarkerRefusal()}>
+        {(refusal) => (
+          <ConflictMarkerGuardModal
+            file={refusal().file}
+            markerLines={refusal().marker_lines}
+            previewLines={refusal().preview_lines}
+            onCancel={() => setConflictMarkerRefusal(null)}
+            onConfirmOverride={async () => {
+              const pathsToStage = refusal().paths;
+              setConflictMarkerRefusal(null);
+              await stagePaths(pathsToStage, true);
+            }}
+          />
+        )}
+      </Show>
     </div>
   );
 };

@@ -15,7 +15,7 @@ use repo_state::{
     query_history_page, query_repository_state, query_submodule_matrix,
     query_working_copy_status_cancellable, read_blob_base64, read_working_tree_file_base64,
     stage_hunks, stage_lines,
-    stage_paths, stash_paths, unstage_hunks, unstage_lines, unstage_paths, BlameLine, BlameOptions,
+    stash_paths, unstage_hunks, unstage_lines, unstage_paths, BlameLine, BlameOptions,
     CommitDetail, CommitMessageTemplate, CommitOptions, CommitSummary,
     DiffViewOptions, FileDiff, GraphResult, HistoricalFile, HistoryScope, HistorySearchOptions,
     HistorySearchResult, IgnoreExplanation, IgnoreTarget, OpenOutcome, RepositoryState, Resolved,
@@ -38,6 +38,12 @@ use repo_state::{
     start_interactive_rebase, start_merge, start_revert, AbortOutcome, ActiveOperationDetail,
     CherryPickOptions, CherryPickOutcome, DirtyTreeDetails, MergeOptions, MergeOutcome,
     OperationStepOutcome, RebaseOutcome, RebasePlanItem, RevertOptions, RevertOutcome,
+};
+use repo_state::{
+    check_file_conflict_markers, launch_mergetool as repo_launch_mergetool,
+    query_conflicts as repo_query_conflicts, query_mergetool_config as repo_query_mergetool_config,
+    resolve_conflict as repo_resolve_conflict, stage_paths_with_guard, ConflictItem,
+    ConflictMarkerInfo, ConflictResolution, MergetoolConfig, MergetoolOutcome, StageOutcome,
 };
 use serde::Serialize;
 use settings::{Bookmark, BookmarksState, Settings, SettingsLoadResult};
@@ -123,9 +129,16 @@ async fn stage_working_copy_paths(
     state: State<'_, AppState>,
     root: String,
     paths: Vec<String>,
-) -> Result<(), String> {
+    override_markers: Option<bool>,
+) -> Result<StageOutcome, String> {
     let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    stage_paths(&state.process_layer, &PathBuf::from(root), &paths).await
+    stage_paths_with_guard(
+        &state.process_layer,
+        &PathBuf::from(root),
+        &paths,
+        override_markers.unwrap_or(false),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -931,6 +944,56 @@ async fn abort_operation_command(
     abort_operation(&state.process_layer, &root).await
 }
 
+#[tauri::command]
+async fn get_conflicts(
+    state: State<'_, AppState>,
+    root: String,
+) -> Result<Vec<ConflictItem>, String> {
+    let root = PathBuf::from(root);
+    repo_query_conflicts(&state.process_layer, &root).await
+}
+
+#[tauri::command]
+async fn check_conflict_markers_command(
+    root: String,
+    path: String,
+) -> Result<Option<ConflictMarkerInfo>, String> {
+    let root = PathBuf::from(root);
+    let rel = PathBuf::from(path);
+    Ok(check_file_conflict_markers(&root, &rel))
+}
+
+#[tauri::command]
+async fn resolve_conflict_command(
+    state: State<'_, AppState>,
+    root: String,
+    path: String,
+    resolution: ConflictResolution,
+) -> Result<(), String> {
+    let root = PathBuf::from(root);
+    repo_resolve_conflict(&state.process_layer, &root, &path, resolution).await
+}
+
+#[tauri::command]
+async fn launch_mergetool_command(
+    state: State<'_, AppState>,
+    root: String,
+    path: String,
+    tool: Option<String>,
+) -> Result<MergetoolOutcome, String> {
+    let root = PathBuf::from(root);
+    repo_launch_mergetool(&state.process_layer, &root, &path, tool).await
+}
+
+#[tauri::command]
+async fn get_mergetool_config(
+    state: State<'_, AppState>,
+    root: String,
+) -> Result<MergetoolConfig, String> {
+    let root = PathBuf::from(root);
+    repo_query_mergetool_config(&state.process_layer, &root).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt::init();
@@ -1027,6 +1090,11 @@ pub fn run() {
             continue_operation_command,
             skip_operation_command,
             abort_operation_command,
+            get_conflicts,
+            check_conflict_markers_command,
+            resolve_conflict_command,
+            launch_mergetool_command,
+            get_mergetool_config,
         ])
         .setup(|app| {
             let watch_dir = desktop_theme::published_theme_watch_dir();

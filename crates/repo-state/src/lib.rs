@@ -5,6 +5,7 @@ mod blame;
 mod branches;
 mod commit;
 mod commit_detail;
+mod conflicts;
 mod diff;
 mod discard;
 mod graph;
@@ -32,6 +33,12 @@ pub use branches::{
 };
 pub use commit::{commit, CommitOptions};
 pub use commit_detail::{query_commit_detail, CommitDetail, FileStat, SignatureState};
+pub use conflicts::{
+    check_conflict_markers_in_text, check_file_conflict_markers, launch_mergetool,
+    query_conflicts, query_mergetool_config, resolve_conflict, stage_paths_with_guard,
+    ConflictItem, ConflictMarkerInfo, ConflictResolution, ConflictType, MergetoolConfig,
+    MergetoolOutcome, StageOutcome, SubmoduleCandidateCommit, SubmoduleConflictInfo,
+};
 pub use diff::{
     diff_file, diff_file_with_options, diff_revisions, read_blob_base64,
     read_working_tree_file_base64, stage_hunks, stage_lines, unstage_hunks, unstage_lines,
