@@ -31,6 +31,7 @@ import { onDesktopThemeChanged, onRepositoryChanged, onWatchDegraded } from "./a
 import { isKnown, type Bookmark, type RepositoryState, type Resolved, type SubmoduleState, type WorkingCopyStatus } from "./api/types";
 import { WorkingCopyView } from "./features/working-copy/WorkingCopyView";
 import { HistoryView } from "./features/history/HistoryView";
+import { BranchesView } from "./features/branches/BranchesView";
 import { PALETTE_TOKENS, resolveTheme } from "./theme/apply-palette";
 import { OperationLogView } from "./features/operation-log/OperationLogView";
 import { RepositoryStatus } from "./features/repository/RepositoryStatus";
@@ -76,7 +77,7 @@ export const App: Component = () => {
 
   const [pathInput, setPathInput] = createSignal("");
   const [openError, setOpenError] = createSignal<string | null>(null);
-  const [mainView, setMainView] = createSignal<"working-copy" | "history">("working-copy");
+  const [mainView, setMainView] = createSignal<"working-copy" | "history" | "branches">("working-copy");
   const [historyScope, setHistoryScope] = createSignal<HistoryScope | undefined>(undefined);
   const [stageError, setStageError] = createSignal<string | null>(null);
   const [commitError, setCommitError] = createSignal<string | null>(null);
@@ -511,7 +512,14 @@ export const App: Component = () => {
           </button>
 
           <Show when={workspace.activeGroup()} fallback={<p class="text-muted">Open a repository to begin.</p>}>
-            <Show when={repoState()}>{(state) => <RepositoryStatus state={state()} />}</Show>
+            <Show when={repoState()}>
+              {(state) => (
+                <RepositoryStatus
+                  state={state()}
+                  onOpenBranches={() => setMainView("branches")}
+                />
+              )}
+            </Show>
             <div class="main-view-switcher">
               <button
                 class="collapse-toggle"
@@ -530,7 +538,24 @@ export const App: Component = () => {
               >
                 History
               </button>
+              <button
+                class="collapse-toggle"
+                aria-pressed={mainView() === "branches"}
+                onClick={() => setMainView("branches")}
+              >
+                Branches
+              </button>
             </div>
+            <Show when={mainView() === "branches"}>
+              <BranchesView
+                root={activeViewPath()!}
+                onCheckoutSuccess={() => {
+                  const path = activeViewPath();
+                  if (path) invalidate(path);
+                }}
+                onNavigateWorkingCopy={() => setMainView("working-copy")}
+              />
+            </Show>
             <Show when={mainView() === "history"}>
               <HistoryView
                 root={activeViewPath()!}
