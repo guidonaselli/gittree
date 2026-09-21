@@ -26,6 +26,12 @@ use repo_state::{
     create_tracking_branch, delete_branch, query_branches, rename_branch, stash_and_checkout,
     BranchComparison, BranchEntry, CheckoutOutcome, DeleteBranchOutcome,
 };
+use repo_state::{
+    apply_stash, clear_stashes, create_stash, create_tag, delete_remote_tag, delete_tag,
+    drop_stash, inspect_stash, pop_stash, push_tag, query_remote_tags, query_stashes, query_tags,
+    CreateStashOptions, CreateTagOptions, PushTagOptions, StashApplyOutcome, StashDetail,
+    StashEntry, TagEntry,
+};
 use serde::Serialize;
 use settings::{Bookmark, BookmarksState, Settings, SettingsLoadResult};
 use std::sync::Mutex;
@@ -678,6 +684,138 @@ async fn compare_branches_command(
     compare_branches(&state.process_layer, &root, &base, &target).await
 }
 
+// Tags
+#[tauri::command]
+async fn get_tags(
+    state: State<'_, AppState>,
+    root: String,
+) -> Result<Vec<TagEntry>, String> {
+    let root = PathBuf::from(root);
+    query_tags(&state.process_layer, &root).await
+}
+
+#[tauri::command]
+async fn create_tag_command(
+    state: State<'_, AppState>,
+    root: String,
+    opts: CreateTagOptions,
+) -> Result<TagEntry, String> {
+    let root = PathBuf::from(root);
+    create_tag(&state.process_layer, &root, opts).await
+}
+
+#[tauri::command]
+async fn delete_tag_command(
+    state: State<'_, AppState>,
+    root: String,
+    name: String,
+) -> Result<(), String> {
+    let root = PathBuf::from(root);
+    delete_tag(&state.process_layer, &root, &name).await
+}
+
+#[tauri::command]
+async fn push_tag_command(
+    state: State<'_, AppState>,
+    root: String,
+    opts: PushTagOptions,
+) -> Result<(), String> {
+    let root = PathBuf::from(root);
+    push_tag(&state.process_layer, &root, opts).await
+}
+
+#[tauri::command]
+async fn delete_remote_tag_command(
+    state: State<'_, AppState>,
+    root: String,
+    remote: String,
+    name: String,
+) -> Result<(), String> {
+    let root = PathBuf::from(root);
+    delete_remote_tag(&state.process_layer, &root, &remote, &name).await
+}
+
+#[tauri::command]
+async fn get_remote_tags(
+    state: State<'_, AppState>,
+    root: String,
+    remote: String,
+) -> Result<Vec<String>, String> {
+    let root = PathBuf::from(root);
+    query_remote_tags(&state.process_layer, &root, &remote).await
+}
+
+// Stashes
+#[tauri::command]
+async fn get_stashes(
+    state: State<'_, AppState>,
+    root: String,
+) -> Result<Vec<StashEntry>, String> {
+    let root = PathBuf::from(root);
+    query_stashes(&state.process_layer, &root).await
+}
+
+#[tauri::command]
+async fn inspect_stash_command(
+    state: State<'_, AppState>,
+    root: String,
+    selector: String,
+) -> Result<StashDetail, String> {
+    let root = PathBuf::from(root);
+    inspect_stash(&state.process_layer, &root, &selector).await
+}
+
+#[tauri::command]
+async fn create_stash_command(
+    state: State<'_, AppState>,
+    root: String,
+    opts: CreateStashOptions,
+) -> Result<String, String> {
+    let root = PathBuf::from(root);
+    create_stash(&state.process_layer, &root, opts).await
+}
+
+#[tauri::command]
+async fn apply_stash_command(
+    state: State<'_, AppState>,
+    root: String,
+    selector: String,
+    reinstate_index: bool,
+) -> Result<StashApplyOutcome, String> {
+    let root = PathBuf::from(root);
+    apply_stash(&state.process_layer, &root, &selector, reinstate_index).await
+}
+
+#[tauri::command]
+async fn pop_stash_command(
+    state: State<'_, AppState>,
+    root: String,
+    selector: String,
+    reinstate_index: bool,
+) -> Result<StashApplyOutcome, String> {
+    let root = PathBuf::from(root);
+    pop_stash(&state.process_layer, &root, &selector, reinstate_index).await
+}
+
+#[tauri::command]
+async fn drop_stash_command(
+    state: State<'_, AppState>,
+    root: String,
+    selector: String,
+) -> Result<(), String> {
+    let root = PathBuf::from(root);
+    drop_stash(&state.process_layer, &root, &selector).await
+}
+
+#[tauri::command]
+async fn clear_stashes_command(
+    state: State<'_, AppState>,
+    root: String,
+) -> Result<(), String> {
+    let root = PathBuf::from(root);
+    clear_stashes(&state.process_layer, &root).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt::init();
@@ -750,6 +888,19 @@ pub fn run() {
             checkout_branch_command,
             stash_and_checkout_command,
             compare_branches_command,
+            get_tags,
+            create_tag_command,
+            delete_tag_command,
+            push_tag_command,
+            delete_remote_tag_command,
+            get_remote_tags,
+            get_stashes,
+            inspect_stash_command,
+            create_stash_command,
+            apply_stash_command,
+            pop_stash_command,
+            drop_stash_command,
+            clear_stashes_command,
         ])
         .setup(|app| {
             let watch_dir = desktop_theme::published_theme_watch_dir();

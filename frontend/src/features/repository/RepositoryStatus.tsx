@@ -4,6 +4,8 @@ import { branchLabel, isKnown, unknownReason, upstreamBasisLabel, type Repositor
 export const RepositoryStatus: Component<{
   state: RepositoryState;
   onOpenBranches?: () => void;
+  onOpenTags?: () => void;
+  onOpenStashes?: () => void;
 }> = (props) => {
   const branch = createMemo(() => branchLabel(props.state.branch));
   const inProgress = createMemo(() => props.state.in_progress);
@@ -49,6 +51,16 @@ export const RepositoryStatus: Component<{
         <Show when={props.onOpenBranches}>
           <button class="collapse-toggle" onClick={props.onOpenBranches}>
             Branches
+          </button>
+        </Show>
+        <Show when={props.onOpenTags}>
+          <button class="collapse-toggle" onClick={props.onOpenTags}>
+            Tags
+          </button>
+        </Show>
+        <Show when={props.onOpenStashes}>
+          <button class="collapse-toggle" onClick={props.onOpenStashes}>
+            Stashes ({stashCount()})
           </button>
         </Show>
         <Show when={inProgress() !== "None"}>

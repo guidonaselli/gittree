@@ -14,8 +14,10 @@ mod message_template;
 mod resolve;
 mod resolved;
 mod staging;
+mod stashes;
 mod status;
 mod submodule;
+mod tags;
 mod upstream;
 mod working_copy;
 pub mod fixtures;
@@ -48,8 +50,16 @@ pub use message_template::{commit_message_template, CommitMessageTemplate};
 pub use resolve::{init_repository, resolve_open, OpenOutcome};
 pub use resolved::Resolved;
 pub use staging::{stage_paths, unstage_paths};
+pub use stashes::{
+    apply_stash, clear_stashes, create_stash, drop_stash, inspect_stash, pop_stash, query_stashes,
+    CreateStashOptions, StashApplyOutcome, StashDetail, StashEntry, StashFileStat,
+};
 pub use status::{query_repository_state, InProgressOperation, RepositoryState};
 pub use submodule::{query_submodule_matrix, GitlinkDivergence, SubmoduleState};
+pub use tags::{
+    create_tag, delete_remote_tag, delete_tag, push_tag, query_remote_tags, query_tags,
+    CreateTagOptions, PushTagOptions, TagEntry,
+};
 pub use upstream::{resolve_upstream_basis, UpstreamBasis};
 pub use working_copy::{
     query_working_copy_status, query_working_copy_status_cancellable, ChangeCode, ChangedEntry,

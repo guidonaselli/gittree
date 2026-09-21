@@ -32,6 +32,8 @@ import { isKnown, type Bookmark, type RepositoryState, type Resolved, type Submo
 import { WorkingCopyView } from "./features/working-copy/WorkingCopyView";
 import { HistoryView } from "./features/history/HistoryView";
 import { BranchesView } from "./features/branches/BranchesView";
+import { TagsView } from "./features/tags/TagsView";
+import { StashesView } from "./features/stashes/StashesView";
 import { PALETTE_TOKENS, resolveTheme } from "./theme/apply-palette";
 import { OperationLogView } from "./features/operation-log/OperationLogView";
 import { RepositoryStatus } from "./features/repository/RepositoryStatus";
@@ -77,7 +79,7 @@ export const App: Component = () => {
 
   const [pathInput, setPathInput] = createSignal("");
   const [openError, setOpenError] = createSignal<string | null>(null);
-  const [mainView, setMainView] = createSignal<"working-copy" | "history" | "branches">("working-copy");
+  const [mainView, setMainView] = createSignal<"working-copy" | "history" | "branches" | "tags" | "stashes">("working-copy");
   const [historyScope, setHistoryScope] = createSignal<HistoryScope | undefined>(undefined);
   const [stageError, setStageError] = createSignal<string | null>(null);
   const [commitError, setCommitError] = createSignal<string | null>(null);
@@ -517,6 +519,8 @@ export const App: Component = () => {
                 <RepositoryStatus
                   state={state()}
                   onOpenBranches={() => setMainView("branches")}
+                  onOpenTags={() => setMainView("tags")}
+                  onOpenStashes={() => setMainView("stashes")}
                 />
               )}
             </Show>
@@ -545,6 +549,20 @@ export const App: Component = () => {
               >
                 Branches
               </button>
+              <button
+                class="collapse-toggle"
+                aria-pressed={mainView() === "tags"}
+                onClick={() => setMainView("tags")}
+              >
+                Tags
+              </button>
+              <button
+                class="collapse-toggle"
+                aria-pressed={mainView() === "stashes"}
+                onClick={() => setMainView("stashes")}
+              >
+                Stashes
+              </button>
             </div>
             <Show when={mainView() === "branches"}>
               <BranchesView
@@ -553,6 +571,21 @@ export const App: Component = () => {
                   const path = activeViewPath();
                   if (path) invalidate(path);
                 }}
+                onNavigateWorkingCopy={() => setMainView("working-copy")}
+              />
+            </Show>
+            <Show when={mainView() === "tags"}>
+              <TagsView
+                root={activeViewPath()!}
+                onCheckoutSuccess={() => {
+                  const path = activeViewPath();
+                  if (path) invalidate(path);
+                }}
+              />
+            </Show>
+            <Show when={mainView() === "stashes"}>
+              <StashesView
+                root={activeViewPath()!}
                 onNavigateWorkingCopy={() => setMainView("working-copy")}
               />
             </Show>

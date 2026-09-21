@@ -41,6 +41,7 @@ const READ_ALLOWLIST: &[&str] = &[
     "cat-file",
     "blame",
     "check-ignore",
+    "check-ref-format",
     "submodule",
     "reflog",
     "describe",

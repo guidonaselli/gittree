@@ -5,6 +5,8 @@ import type {
   BranchEntry,
   CheckoutOutcome,
   CommitSummary,
+  CreateStashOptions,
+  CreateTagOptions,
   DeleteBranchOutcome,
   DesktopPalette,
   FileDiff,
@@ -12,11 +14,16 @@ import type {
   IgnoreTarget,
   LogEntry,
   OpenRepositoryResult,
+  PushTagOptions,
   RepositoryState,
   Resolved,
   Settings,
   SettingsLoadResult,
+  StashApplyOutcome,
+  StashDetail,
+  StashEntry,
   SubmoduleState,
+  TagEntry,
   WorkingCopyStatus,
 } from "./types";
 
@@ -446,5 +453,75 @@ export function compareBranches(
     base,
     target,
   });
+}
+
+// Tags
+export function getTags(root: string): Promise<TagEntry[]> {
+  return invoke<TagEntry[]>("get_tags", { root });
+}
+
+export function createTag(root: string, opts: CreateTagOptions): Promise<TagEntry> {
+  return invoke<TagEntry>("create_tag_command", { root, opts });
+}
+
+export function deleteTag(root: string, name: string): Promise<void> {
+  return invoke<void>("delete_tag_command", { root, name });
+}
+
+export function pushTag(root: string, opts: PushTagOptions): Promise<void> {
+  return invoke<void>("push_tag_command", { root, opts });
+}
+
+export function deleteRemoteTag(root: string, remote: string, name: string): Promise<void> {
+  return invoke<void>("delete_remote_tag_command", { root, remote, name });
+}
+
+export function getRemoteTags(root: string, remote: string): Promise<string[]> {
+  return invoke<string[]>("get_remote_tags", { root, remote });
+}
+
+// Stashes
+export function getStashes(root: string): Promise<StashEntry[]> {
+  return invoke<StashEntry[]>("get_stashes", { root });
+}
+
+export function inspectStash(root: string, selector: string): Promise<StashDetail> {
+  return invoke<StashDetail>("inspect_stash_command", { root, selector });
+}
+
+export function createStash(root: string, opts: CreateStashOptions): Promise<string> {
+  return invoke<string>("create_stash_command", { root, opts });
+}
+
+export function applyStash(
+  root: string,
+  selector: string,
+  reinstateIndex = false
+): Promise<StashApplyOutcome> {
+  return invoke<StashApplyOutcome>("apply_stash_command", {
+    root,
+    selector,
+    reinstateIndex,
+  });
+}
+
+export function popStash(
+  root: string,
+  selector: string,
+  reinstateIndex = false
+): Promise<StashApplyOutcome> {
+  return invoke<StashApplyOutcome>("pop_stash_command", {
+    root,
+    selector,
+    reinstateIndex,
+  });
+}
+
+export function dropStash(root: string, selector: string): Promise<void> {
+  return invoke<void>("drop_stash_command", { root, selector });
+}
+
+export function clearStashes(root: string): Promise<void> {
+  return invoke<void>("clear_stashes_command", { root });
 }
 

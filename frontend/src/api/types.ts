@@ -244,3 +244,68 @@ export type DeleteBranchOutcome =
       recovery_hint: string;
     };
 
+export interface TagEntry {
+  name: string;
+  target_commit: string;
+  target_commit_full: string;
+  tag_sha: string;
+  is_annotated: boolean;
+  tagger_name: string | null;
+  tagger_email: string | null;
+  tagger_date: string | null;
+  subject: string | null;
+  message: string | null;
+  commit_subject: string | null;
+}
+
+export interface CreateTagOptions {
+  name: string;
+  target_ref?: string | null;
+  message?: string | null;
+  force: boolean;
+}
+
+export interface PushTagOptions {
+  remote: string;
+  name: string;
+  force: boolean;
+}
+
+export interface StashEntry {
+  index: number;
+  selector: string;
+  commit_sha: string;
+  short_sha: string;
+  message: string;
+  date: string;
+  branch: string | null;
+}
+
+export interface StashFileStat {
+  path: string;
+  additions: number;
+  deletions: number;
+}
+
+export interface StashDetail {
+  entry: StashEntry;
+  diff: string;
+  changed_files: StashFileStat[];
+  untracked_files: string[];
+}
+
+export interface CreateStashOptions {
+  message?: string | null;
+  include_untracked: boolean;
+  keep_index: boolean;
+}
+
+export type StashApplyOutcome =
+  | { kind: "Clean" }
+  | {
+      kind: "Conflict";
+      conflicting_files: string[];
+      message: string;
+      stash_retained: boolean;
+    };
+
