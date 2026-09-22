@@ -1,5 +1,5 @@
-use std::path::{Path, PathBuf};
 use git_process::{GitCall, Intent, ProcessLayer};
+use std::path::{Path, PathBuf};
 use tokio_util::sync::CancellationToken;
 
 use crate::staging::stage_paths;
@@ -143,11 +143,7 @@ pub async fn query_submodule_commit(
     }
 
     let sub_work = root.join(submodule_path);
-    let target_dir = if sub_work.exists() {
-        &sub_work
-    } else {
-        root
-    };
+    let target_dir = if sub_work.exists() { &sub_work } else { root };
 
     let res = layer
         .run(
@@ -236,7 +232,8 @@ pub async fn query_conflicts(
         let ours_exists = m2 != "000000" && !h2.chars().all(|c| c == '0');
         let theirs_exists = m3 != "000000" && !h3.chars().all(|c| c == '0');
 
-        let is_submodule = sub.starts_with('S') || m1 == "160000" || m2 == "160000" || m3 == "160000";
+        let is_submodule =
+            sub.starts_with('S') || m1 == "160000" || m2 == "160000" || m3 == "160000";
 
         let conflict_type = if is_submodule {
             ConflictType::Submodule
@@ -421,7 +418,10 @@ pub async fn resolve_conflict(
                         .await
                         .map_err(|e| e.to_string())?;
                     if !res.ok() {
-                        return Err(format!("git checkout --theirs failed: {}", res.stderr.trim()));
+                        return Err(format!(
+                            "git checkout --theirs failed: {}",
+                            res.stderr.trim()
+                        ));
                     }
                     if let Some(sub_info) = &item.submodule_info {
                         if let Some(theirs_c) = &sub_info.theirs_commit {
@@ -466,7 +466,10 @@ pub async fn resolve_conflict(
                 .await
                 .map_err(|e| e.to_string())?;
             if !res.ok() {
-                return Err(format!("git checkout --theirs failed: {}", res.stderr.trim()));
+                return Err(format!(
+                    "git checkout --theirs failed: {}",
+                    res.stderr.trim()
+                ));
             }
             stage_paths(layer, root, &[PathBuf::from(path)]).await?;
             Ok(())
@@ -634,7 +637,11 @@ mod tests {
         setup_repo(root);
 
         let file = root.join("conflict.txt");
-        std::fs::write(&file, "first line\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> feature\nlast line\n").unwrap();
+        std::fs::write(
+            &file,
+            "first line\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> feature\nlast line\n",
+        )
+        .unwrap();
 
         let layer = ProcessLayer::new(4, std::time::Duration::from_secs(10));
 
@@ -644,7 +651,11 @@ mod tests {
             .unwrap();
 
         match outcome {
-            StageOutcome::MarkerRefusal { file, marker_lines, preview_lines } => {
+            StageOutcome::MarkerRefusal {
+                file,
+                marker_lines,
+                preview_lines,
+            } => {
                 assert_eq!(file, "conflict.txt");
                 assert_eq!(marker_lines, vec![2, 4, 6]);
                 assert_eq!(preview_lines.len(), 3);
@@ -668,26 +679,66 @@ mod tests {
 
         // Commit base
         std::fs::write(root.join("f1.txt"), "base 1\n").unwrap();
-        std::process::Command::new("git").args(["add", "."]).current_dir(root).output().unwrap();
-        std::process::Command::new("git").args(["commit", "-m", "base"]).current_dir(root).output().unwrap();
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(root)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", "base"])
+            .current_dir(root)
+            .output()
+            .unwrap();
 
         // Branch 1: modify f1, add f2
-        std::process::Command::new("git").args(["checkout", "-b", "b1"]).current_dir(root).output().unwrap();
+        std::process::Command::new("git")
+            .args(["checkout", "-b", "b1"])
+            .current_dir(root)
+            .output()
+            .unwrap();
         std::fs::write(root.join("f1.txt"), "b1 1\n").unwrap();
         std::fs::write(root.join("f2.txt"), "b1 2\n").unwrap();
-        std::process::Command::new("git").args(["add", "."]).current_dir(root).output().unwrap();
-        std::process::Command::new("git").args(["commit", "-m", "b1"]).current_dir(root).output().unwrap();
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(root)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", "b1"])
+            .current_dir(root)
+            .output()
+            .unwrap();
 
         // Branch 2 from main: modify f1 differently, add f2 differently
-        std::process::Command::new("git").args(["checkout", "main"]).current_dir(root).output().unwrap();
-        std::process::Command::new("git").args(["checkout", "-b", "b2"]).current_dir(root).output().unwrap();
+        std::process::Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(root)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["checkout", "-b", "b2"])
+            .current_dir(root)
+            .output()
+            .unwrap();
         std::fs::write(root.join("f1.txt"), "b2 1\n").unwrap();
         std::fs::write(root.join("f2.txt"), "b2 2\n").unwrap();
-        std::process::Command::new("git").args(["add", "."]).current_dir(root).output().unwrap();
-        std::process::Command::new("git").args(["commit", "-m", "b2"]).current_dir(root).output().unwrap();
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(root)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", "b2"])
+            .current_dir(root)
+            .output()
+            .unwrap();
 
         // Merge b1 into b2 -> conflicts in f1 (both modified) and f2 (both added)
-        std::process::Command::new("git").args(["merge", "b1"]).current_dir(root).output().unwrap();
+        std::process::Command::new("git")
+            .args(["merge", "b1"])
+            .current_dir(root)
+            .output()
+            .unwrap();
 
         let layer = ProcessLayer::new(4, std::time::Duration::from_secs(10));
         let conflicts = query_conflicts(&layer, root).await.unwrap();
@@ -704,12 +755,16 @@ mod tests {
         assert_eq!(f2.conflict_code, "AA");
 
         // Resolve f1 using ours
-        resolve_conflict(&layer, root, "f1.txt", ConflictResolution::Ours).await.unwrap();
+        resolve_conflict(&layer, root, "f1.txt", ConflictResolution::Ours)
+            .await
+            .unwrap();
         let content1 = std::fs::read_to_string(root.join("f1.txt")).unwrap();
         assert_eq!(content1.trim(), "b2 1");
 
         // Resolve f2 using theirs
-        resolve_conflict(&layer, root, "f2.txt", ConflictResolution::Theirs).await.unwrap();
+        resolve_conflict(&layer, root, "f2.txt", ConflictResolution::Theirs)
+            .await
+            .unwrap();
         let content2 = std::fs::read_to_string(root.join("f2.txt")).unwrap();
         assert_eq!(content2.trim(), "b1 2");
 
@@ -725,22 +780,58 @@ mod tests {
         setup_repo(root);
 
         std::fs::write(root.join("file.txt"), "base\n").unwrap();
-        std::process::Command::new("git").args(["add", "."]).current_dir(root).output().unwrap();
-        std::process::Command::new("git").args(["commit", "-m", "base"]).current_dir(root).output().unwrap();
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(root)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", "base"])
+            .current_dir(root)
+            .output()
+            .unwrap();
 
         // Branch b_delete deletes file
-        std::process::Command::new("git").args(["checkout", "-b", "b_delete"]).current_dir(root).output().unwrap();
-        std::process::Command::new("git").args(["rm", "file.txt"]).current_dir(root).output().unwrap();
-        std::process::Command::new("git").args(["commit", "-m", "delete"]).current_dir(root).output().unwrap();
+        std::process::Command::new("git")
+            .args(["checkout", "-b", "b_delete"])
+            .current_dir(root)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["rm", "file.txt"])
+            .current_dir(root)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", "delete"])
+            .current_dir(root)
+            .output()
+            .unwrap();
 
         // Branch b_mod modifies file
-        std::process::Command::new("git").args(["checkout", "main"]).current_dir(root).output().unwrap();
-        std::process::Command::new("git").args(["checkout", "-b", "b_mod"]).current_dir(root).output().unwrap();
+        std::process::Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(root)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["checkout", "-b", "b_mod"])
+            .current_dir(root)
+            .output()
+            .unwrap();
         std::fs::write(root.join("file.txt"), "mod content\n").unwrap();
-        std::process::Command::new("git").args(["commit", "-am", "mod"]).current_dir(root).output().unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-am", "mod"])
+            .current_dir(root)
+            .output()
+            .unwrap();
 
         // Merge b_delete into b_mod -> UD conflict (ours modified, theirs deleted)
-        std::process::Command::new("git").args(["merge", "b_delete"]).current_dir(root).output().unwrap();
+        std::process::Command::new("git")
+            .args(["merge", "b_delete"])
+            .current_dir(root)
+            .output()
+            .unwrap();
 
         let layer = ProcessLayer::new(4, std::time::Duration::from_secs(10));
         let conflicts = query_conflicts(&layer, root).await.unwrap();
@@ -752,7 +843,9 @@ mod tests {
         assert!(!c.theirs_exists);
 
         // Resolve using theirs (accept deletion)
-        resolve_conflict(&layer, root, "file.txt", ConflictResolution::Theirs).await.unwrap();
+        resolve_conflict(&layer, root, "file.txt", ConflictResolution::Theirs)
+            .await
+            .unwrap();
         assert!(!root.join("file.txt").exists());
 
         let remaining = query_conflicts(&layer, root).await.unwrap();
@@ -769,41 +862,112 @@ mod tests {
 
         setup_repo(&sub_dir);
         std::fs::write(sub_dir.join("README"), "init\n").unwrap();
-        std::process::Command::new("git").args(["add", "."]).current_dir(&sub_dir).output().unwrap();
-        std::process::Command::new("git").args(["commit", "-m", "sub initial"]).current_dir(&sub_dir).output().unwrap();
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(&sub_dir)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", "sub initial"])
+            .current_dir(&sub_dir)
+            .output()
+            .unwrap();
 
         setup_repo(&super_dir);
         std::fs::write(super_dir.join("root.txt"), "root\n").unwrap();
-        std::process::Command::new("git").args(["add", "."]).current_dir(&super_dir).output().unwrap();
-        std::process::Command::new("git").args(["commit", "-m", "super initial"]).current_dir(&super_dir).output().unwrap();
-
-        // Add submodule
         std::process::Command::new("git")
-            .args(["-c", "protocol.file.allow=always", "submodule", "add", sub_dir.to_str().unwrap(), "mysub"])
+            .args(["add", "."])
             .current_dir(&super_dir)
             .output()
             .unwrap();
-        std::process::Command::new("git").args(["commit", "-m", "add submodule"]).current_dir(&super_dir).output().unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", "super initial"])
+            .current_dir(&super_dir)
+            .output()
+            .unwrap();
+
+        // Add submodule
+        std::process::Command::new("git")
+            .args([
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                sub_dir.to_str().unwrap(),
+                "mysub",
+            ])
+            .current_dir(&super_dir)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", "add submodule"])
+            .current_dir(&super_dir)
+            .output()
+            .unwrap();
 
         // Branch 1: advance submodule to commit A
-        std::process::Command::new("git").args(["checkout", "-b", "branch1"]).current_dir(&super_dir).output().unwrap();
+        std::process::Command::new("git")
+            .args(["checkout", "-b", "branch1"])
+            .current_dir(&super_dir)
+            .output()
+            .unwrap();
         let sub_work = super_dir.join("mysub");
         std::fs::write(sub_work.join("README"), "commit A\n").unwrap();
-        std::process::Command::new("git").args(["commit", "-am", "sub commit A (ours)"]).current_dir(&sub_work).output().unwrap();
-        std::process::Command::new("git").args(["add", "mysub"]).current_dir(&super_dir).output().unwrap();
-        std::process::Command::new("git").args(["commit", "-m", "super branch1"]).current_dir(&super_dir).output().unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-am", "sub commit A (ours)"])
+            .current_dir(&sub_work)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["add", "mysub"])
+            .current_dir(&super_dir)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", "super branch1"])
+            .current_dir(&super_dir)
+            .output()
+            .unwrap();
 
         // Branch 2 from main: advance submodule to commit B
-        std::process::Command::new("git").args(["checkout", "main"]).current_dir(&super_dir).output().unwrap();
-        std::process::Command::new("git").args(["checkout", "-b", "branch2"]).current_dir(&super_dir).output().unwrap();
-        std::process::Command::new("git").args(["submodule", "update", "--checkout"]).current_dir(&super_dir).output().unwrap();
+        std::process::Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(&super_dir)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["checkout", "-b", "branch2"])
+            .current_dir(&super_dir)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["submodule", "update", "--checkout"])
+            .current_dir(&super_dir)
+            .output()
+            .unwrap();
         std::fs::write(sub_work.join("README"), "commit B\n").unwrap();
-        std::process::Command::new("git").args(["commit", "-am", "sub commit B (theirs)"]).current_dir(&sub_work).output().unwrap();
-        std::process::Command::new("git").args(["add", "mysub"]).current_dir(&super_dir).output().unwrap();
-        std::process::Command::new("git").args(["commit", "-m", "super branch2"]).current_dir(&super_dir).output().unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-am", "sub commit B (theirs)"])
+            .current_dir(&sub_work)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["add", "mysub"])
+            .current_dir(&super_dir)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", "super branch2"])
+            .current_dir(&super_dir)
+            .output()
+            .unwrap();
 
         // Merge branch1 into branch2 -> submodule conflict!
-        std::process::Command::new("git").args(["merge", "branch1"]).current_dir(&super_dir).output().unwrap();
+        std::process::Command::new("git")
+            .args(["merge", "branch1"])
+            .current_dir(&super_dir)
+            .output()
+            .unwrap();
 
         let layer = ProcessLayer::new(4, std::time::Duration::from_secs(10));
         let conflicts = query_conflicts(&layer, &super_dir).await.unwrap();
@@ -814,18 +978,31 @@ mod tests {
         assert_eq!(sub_conflict.conflict_type, ConflictType::Submodule);
         assert!(sub_conflict.is_submodule);
 
-        let sub_info = sub_conflict.submodule_info.as_ref().expect("Expected submodule info");
+        let sub_info = sub_conflict
+            .submodule_info
+            .as_ref()
+            .expect("Expected submodule info");
         let ours_commit = sub_info.ours_commit.as_ref().expect("Expected ours commit");
-        let theirs_commit = sub_info.theirs_commit.as_ref().expect("Expected theirs commit");
+        let theirs_commit = sub_info
+            .theirs_commit
+            .as_ref()
+            .expect("Expected theirs commit");
 
         // Candidates must show commit subject
         assert_eq!(ours_commit.subject, "sub commit B (theirs)");
         assert_eq!(theirs_commit.subject, "sub commit A (ours)");
 
         // Resolve by selecting candidate commit A
-        resolve_conflict(&layer, &super_dir, "mysub", ConflictResolution::SubmoduleCommit { sha: theirs_commit.sha.clone() })
-            .await
-            .unwrap();
+        resolve_conflict(
+            &layer,
+            &super_dir,
+            "mysub",
+            ConflictResolution::SubmoduleCommit {
+                sha: theirs_commit.sha.clone(),
+            },
+        )
+        .await
+        .unwrap();
 
         let remaining = query_conflicts(&layer, &super_dir).await.unwrap();
         assert!(remaining.is_empty());

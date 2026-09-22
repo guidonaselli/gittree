@@ -103,7 +103,10 @@ async fn resolve_target_file(
                 .await
                 .map_err(|e| e.to_string())?;
             if !res.ok() {
-                return Err(format!("failed to resolve info/exclude: {}", res.stderr.trim()));
+                return Err(format!(
+                    "failed to resolve info/exclude: {}",
+                    res.stderr.trim()
+                ));
             }
             let raw_path = String::from_utf8_lossy(&res.stdout).trim().to_string();
             let p = PathBuf::from(&raw_path);
@@ -222,9 +225,14 @@ mod tests {
         assert_eq!(expl.pattern, "*.log");
 
         // Add local rule to .git/info/exclude
-        add_ignore_rule(&layer, td.path(), IgnoreTarget::GitInfoExclude, "secret.key")
-            .await
-            .unwrap();
+        add_ignore_rule(
+            &layer,
+            td.path(),
+            IgnoreTarget::GitInfoExclude,
+            "secret.key",
+        )
+        .await
+        .unwrap();
 
         let expl_secret = check_ignore(&layer, td.path(), "secret.key")
             .await

@@ -1,11 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use git_process::{GitCall, Intent, ProcessLayer};
 use tokio_util::sync::CancellationToken;
 
 use crate::resolved::Resolved;
+use crate::sync::{pull as repo_pull, PullOptions, PullOutcome, PullStrategy};
 use crate::upstream::{resolve_upstream_basis, UpstreamBasis};
 
 /// Divergence between a submodule's checked-out HEAD and the commit the
@@ -147,9 +149,239 @@ impl<'a> IntoIterator for &'a SubmoduleMatrixResult {
     }
 }
 
+/// Stage reported during parallel submodule network refresh.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "stage", rename_all = "snake_case")]
+pub enum SubmoduleRefreshStage {
+    Starting,
+    Fetching { remote: String },
+    Completed { summary: String },
+    Skipped { reason: String },
+    Failed { error: String },
+}
+
+/// Progress event emitted during network refresh.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SubmoduleRefreshProgress {
+    pub path: PathBuf,
+    pub relative_path: String,
+    pub stage: SubmoduleRefreshStage,
+}
+
+/// Outcome status for an individual submodule during network refresh.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum SubmoduleRefreshStatus {
+    Success { summary: String },
+    Skipped { reason: String },
+    Failed { error: String },
+    Cancelled,
+}
+
+/// Row result for an individual submodule during network refresh.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SubmoduleRefreshRowResult {
+    pub path: PathBuf,
+    pub relative_path: String,
+    pub status: SubmoduleRefreshStatus,
+    pub updated_state: Option<SubmoduleState>,
+}
+
+/// Complete aggregated outcome of a parallel network refresh operation.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SubmoduleRefreshResult {
+    pub total: usize,
+    pub succeeded: usize,
+    pub failed: usize,
+    pub skipped: usize,
+    pub rows: Vec<SubmoduleRefreshRowResult>,
+}
+
+/// Options controlling parallel network refresh.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct SubmoduleRefreshOptions {
+    pub paths: Option<Vec<PathBuf>>,
+    pub concurrency: Option<usize>,
+    pub prune: Option<bool>,
+    pub tags: Option<bool>,
+}
+
+/// Per-item action determined during bulk checkout preview.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum BulkCheckoutAction {
+    WillSwitch {
+        current_branch: String,
+        target_branch: String,
+    },
+    AlreadyOnBranch {
+        branch: String,
+    },
+    SkippedDirty {
+        uncommitted_changes: bool,
+    },
+    MissingBranch {
+        branch: String,
+    },
+    Uninitialized,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BulkCheckoutPreviewItem {
+    pub path: PathBuf,
+    pub relative_path: String,
+    pub action: BulkCheckoutAction,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BulkCheckoutPreview {
+    pub total: usize,
+    pub will_switch: usize,
+    pub already_on_branch: usize,
+    pub skipped_dirty: usize,
+    pub missing_branch: usize,
+    pub items: Vec<BulkCheckoutPreviewItem>,
+}
+
+/// Per-item action determined during bulk pull preview.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum BulkPullAction {
+    WillPull {
+        branch: String,
+        upstream: String,
+        behind: u32,
+    },
+    AlreadyUpToDate {
+        branch: String,
+        upstream: String,
+    },
+    SkippedDirty {
+        uncommitted_changes: bool,
+    },
+    SkippedNoUpstream,
+    Uninitialized,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BulkPullPreviewItem {
+    pub path: PathBuf,
+    pub relative_path: String,
+    pub action: BulkPullAction,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BulkPullPreview {
+    pub total: usize,
+    pub will_pull: usize,
+    pub already_up_to_date: usize,
+    pub skipped_dirty: usize,
+    pub skipped_no_upstream: usize,
+    pub items: Vec<BulkPullPreviewItem>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BulkPullOptions {
+    pub strategy: PullStrategy,
+    pub paths: Option<Vec<PathBuf>>,
+}
+
+/// Per-item action determined during bulk reset to gitlink preview.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum BulkResetAction {
+    WillReset {
+        current_commit: String,
+        gitlink_commit: String,
+    },
+    AlreadyInSync {
+        gitlink_commit: String,
+    },
+    SkippedDirty {
+        uncommitted_changes: bool,
+    },
+    MissingObject {
+        gitlink_commit: String,
+    },
+    NoGitlinkRecorded,
+    Uninitialized,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BulkResetPreviewItem {
+    pub path: PathBuf,
+    pub relative_path: String,
+    pub action: BulkResetAction,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BulkResetPreview {
+    pub total: usize,
+    pub will_reset: usize,
+    pub already_in_sync: usize,
+    pub skipped_dirty: usize,
+    pub missing_object: usize,
+    pub items: Vec<BulkResetPreviewItem>,
+}
+
+/// Outcome status for an individual bulk operation item.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum BulkItemOutcome {
+    Success { message: String },
+    Skipped { reason: String },
+    Failed { error: String },
+    Cancelled,
+}
+
+/// Honest per-item outcome of a bulk operation.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BulkOperationItemResult {
+    pub path: PathBuf,
+    pub relative_path: String,
+    pub outcome: BulkItemOutcome,
+    pub updated_state: Option<SubmoduleState>,
+}
+
+/// Honest multi-operation aggregated result separating successes, skips, and failures.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BulkOperationResult {
+    pub total: usize,
+    pub succeeded: usize,
+    pub skipped: usize,
+    pub failed: usize,
+    pub items: Vec<BulkOperationItemResult>,
+}
+
+/// Outcome of bumping a submodule's gitlink in the superproject.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum BumpGitlinkOutcome {
+    Success {
+        submodule_path: PathBuf,
+        relative_path: String,
+        head_commit: String,
+        previous_gitlink: Option<String>,
+        warning: Option<String>,
+    },
+    UnpushedRefused {
+        submodule_path: PathBuf,
+        relative_path: String,
+        head_commit: String,
+        reason: String,
+    },
+    Failed {
+        submodule_path: PathBuf,
+        relative_path: String,
+        error: String,
+    },
+}
+
 /// Resilient line-by-line `.gitmodules` parser reporting malformed entries with
 /// their exact 1-indexed line numbers while parsing all valid submodule sections.
-pub fn parse_gitmodules_text(text: &str) -> (Vec<DeclaredSubmodule>, Vec<MalformedGitmodulesEntry>) {
+pub fn parse_gitmodules_text(
+    text: &str,
+) -> (Vec<DeclaredSubmodule>, Vec<MalformedGitmodulesEntry>) {
     let mut submodules = Vec::new();
     let mut malformed_entries = Vec::new();
 
@@ -163,27 +395,29 @@ pub fn parse_gitmodules_text(text: &str) -> (Vec<DeclaredSubmodule>, Vec<Malform
 
     let mut current: Option<CurrentSubmodule> = None;
 
-    let finish_submodule = |cur: CurrentSubmodule,
-                            submodules: &mut Vec<DeclaredSubmodule>,
-                            malformed: &mut Vec<MalformedGitmodulesEntry>| {
-        match cur.path {
-            Some(path) if !path.trim().is_empty() => {
-                submodules.push(DeclaredSubmodule {
-                    name: cur.name,
-                    path: path.trim().to_string(),
-                    branch: cur.branch.map(|b| b.trim().to_string()),
-                    url: cur.url.map(|u| u.trim().to_string()),
-                });
+    let finish_submodule =
+        |cur: CurrentSubmodule,
+         submodules: &mut Vec<DeclaredSubmodule>,
+         malformed: &mut Vec<MalformedGitmodulesEntry>| {
+            match cur.path {
+                Some(path) if !path.trim().is_empty() => {
+                    submodules.push(DeclaredSubmodule {
+                        name: cur.name,
+                        path: path.trim().to_string(),
+                        branch: cur.branch.map(|b| b.trim().to_string()),
+                        url: cur.url.map(|u| u.trim().to_string()),
+                    });
+                }
+                _ => {
+                    malformed.push(MalformedGitmodulesEntry {
+                        line_number: cur.header_line,
+                        raw_text: format!("[submodule \"{}\"]", cur.name),
+                        reason: "Submodule section is missing mandatory 'path' directive"
+                            .to_string(),
+                    });
+                }
             }
-            _ => {
-                malformed.push(MalformedGitmodulesEntry {
-                    line_number: cur.header_line,
-                    raw_text: format!("[submodule \"{}\"]", cur.name),
-                    reason: "Submodule section is missing mandatory 'path' directive".to_string(),
-                });
-            }
-        }
-    };
+        };
 
     for (idx, line) in text.lines().enumerate() {
         let line_num = idx + 1;
@@ -213,7 +447,9 @@ pub fn parse_gitmodules_text(text: &str) -> (Vec<DeclaredSubmodule>, Vec<Malform
                 malformed_entries.push(MalformedGitmodulesEntry {
                     line_number: line_num,
                     raw_text: line.to_string(),
-                    reason: format!("Unexpected section header: expected [submodule \"<name>\"], got [{inner}]"),
+                    reason: format!(
+                        "Unexpected section header: expected [submodule \"<name>\"], got [{inner}]"
+                    ),
                 });
                 continue;
             }
@@ -261,7 +497,12 @@ pub fn parse_gitmodules_text(text: &str) -> (Vec<DeclaredSubmodule>, Vec<Malform
             };
 
             let key = key.trim().to_lowercase();
-            let val = val.trim().trim_matches('"').trim_matches('\'').trim().to_string();
+            let val = val
+                .trim()
+                .trim_matches('"')
+                .trim_matches('\'')
+                .trim()
+                .to_string();
 
             if let Some(cur) = current.as_mut() {
                 match key.as_str() {
@@ -320,10 +561,7 @@ async fn read_gitmodules_resilient(
 }
 
 /// One batched call reading every gitlink committed in the superproject's HEAD.
-async fn read_gitlinks(
-    layer: &ProcessLayer,
-    superproject_root: &Path,
-) -> HashMap<String, String> {
+async fn read_gitlinks(layer: &ProcessLayer, superproject_root: &Path) -> HashMap<String, String> {
     let result = layer
         .run(
             GitCall::new(superproject_root, ["ls-tree", "-r", "HEAD", "-z"]),
@@ -455,10 +693,7 @@ pub fn is_submodule_initialized(path: &Path) -> bool {
 
 /// Resolves the branch state of a submodule, identifying named branches
 /// or detached HEAD with any refs (branches/tags) pointing at the commit.
-async fn resolve_submodule_branch(
-    layer: &ProcessLayer,
-    path: &Path,
-) -> Resolved<SubmoduleBranch> {
+async fn resolve_submodule_branch(layer: &ProcessLayer, path: &Path) -> Resolved<SubmoduleBranch> {
     let symbolic = layer
         .run(
             GitCall::new(path, ["symbolic-ref", "--short", "-q", "HEAD"]),
@@ -546,7 +781,10 @@ async fn resolve_gitlink_divergence(
 
     let obj_check = layer
         .run(
-            GitCall::new(path, ["cat-file", "-e", &format!("{gitlink_sha}^{{commit}}")]),
+            GitCall::new(
+                path,
+                ["cat-file", "-e", &format!("{gitlink_sha}^{{commit}}")],
+            ),
             Intent::Read,
             CancellationToken::new(),
         )
@@ -642,6 +880,7 @@ fn detect_drift(
     drifts
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn query_one_submodule(
     layer: &ProcessLayer,
     superproject_root: &Path,
@@ -730,13 +969,8 @@ async fn query_one_submodule(
         None => None,
     };
 
-    let gitlink_divergence = resolve_gitlink_divergence(
-        layer,
-        &path,
-        gitlink.as_deref(),
-        head_commit.as_deref(),
-    )
-    .await;
+    let gitlink_divergence =
+        resolve_gitlink_divergence(layer, &path, gitlink.as_deref(), head_commit.as_deref()).await;
 
     let remote_basis =
         Resolved::known(resolve_upstream_basis(layer, &path, branch_name.as_deref()).await);
@@ -787,16 +1021,14 @@ async fn query_one_submodule(
     let real_git_dir = resolve_git_dir(&path);
     let fetch_head = real_git_dir.map(|g| g.join("FETCH_HEAD"));
     let last_fetch_unix_secs = match fetch_head {
-        Some(fh) if fh.exists() => {
-            match std::fs::metadata(&fh).and_then(|m| m.modified()) {
-                Ok(t) => Resolved::known(
-                    t.duration_since(SystemTime::UNIX_EPOCH)
-                        .ok()
-                        .map(|d| d.as_secs()),
-                ),
-                Err(e) => Resolved::unknown(e.to_string()),
-            }
-        }
+        Some(fh) if fh.exists() => match std::fs::metadata(&fh).and_then(|m| m.modified()) {
+            Ok(t) => Resolved::known(
+                t.duration_since(SystemTime::UNIX_EPOCH)
+                    .ok()
+                    .map(|d| d.as_secs()),
+            ),
+            Err(e) => Resolved::unknown(e.to_string()),
+        },
         Some(_) => Resolved::known(None),
         None => Resolved::unknown("could not resolve git directory"),
     };
@@ -844,12 +1076,7 @@ async fn query_submodules_recursive(
     }
     visited.insert(canonical_root);
 
-    let (
-        (declared_submodules, malformed_entries),
-        head_gitlinks,
-        index_gitlinks,
-        config_urls,
-    ) = tokio::join!(
+    let ((declared_submodules, malformed_entries), head_gitlinks, index_gitlinks, config_urls) = tokio::join!(
         read_gitmodules_resilient(layer, root),
         read_gitlinks(layer, root),
         read_index_gitlinks(layer, root),
@@ -865,7 +1092,10 @@ async fn query_submodules_recursive(
 
     for d in declared_submodules {
         let path = d.path.clone();
-        let gitlink = head_gitlinks.get(&path).or_else(|| index_gitlinks.get(&path)).cloned();
+        let gitlink = head_gitlinks
+            .get(&path)
+            .or_else(|| index_gitlinks.get(&path))
+            .cloned();
         entries_to_query.push((Some(d), path, gitlink));
     }
 
@@ -880,25 +1110,27 @@ async fn query_submodules_recursive(
         }
     }
 
-    let futures = entries_to_query.into_iter().map(|(declared, rel_path, gitlink)| {
-        let config_url = declared
-            .as_ref()
-            .and_then(|d| config_urls.get(&d.name).cloned());
-        let head_gitlink = head_gitlinks.get(&rel_path).cloned();
-        let index_gitlink = index_gitlinks.get(&rel_path).cloned();
-        query_one_submodule(
-            layer,
-            root,
-            parent_path,
-            current_depth,
-            declared,
-            rel_path,
-            gitlink,
-            head_gitlink,
-            index_gitlink,
-            config_url,
-        )
-    });
+    let futures = entries_to_query
+        .into_iter()
+        .map(|(declared, rel_path, gitlink)| {
+            let config_url = declared
+                .as_ref()
+                .and_then(|d| config_urls.get(&d.name).cloned());
+            let head_gitlink = head_gitlinks.get(&rel_path).cloned();
+            let index_gitlink = index_gitlinks.get(&rel_path).cloned();
+            query_one_submodule(
+                layer,
+                root,
+                parent_path,
+                current_depth,
+                declared,
+                rel_path,
+                gitlink,
+                head_gitlink,
+                index_gitlink,
+                config_url,
+            )
+        });
 
     let direct_submodules = futures::future::join_all(futures).await;
 
@@ -1017,7 +1249,9 @@ pub async fn query_single_submodule(
                 CancellationToken::new(),
             )
             .await;
-        cfg.ok().filter(|r| r.ok()).map(|r| r.stdout_utf8_lossy().trim().to_string())
+        cfg.ok()
+            .filter(|r| r.ok())
+            .map(|r| r.stdout_utf8_lossy().trim().to_string())
     } else {
         None
     };
@@ -1043,6 +1277,1176 @@ pub async fn query_single_submodule(
         )
         .await,
     )
+}
+
+fn filter_submodules_by_paths(
+    matrix: &[SubmoduleState],
+    superproject_root: &Path,
+    paths: Option<&[PathBuf]>,
+) -> Vec<SubmoduleState> {
+    match paths {
+        Some(filter_paths) => {
+            let filter_set: HashSet<PathBuf> = filter_paths
+                .iter()
+                .map(|p| {
+                    if p.is_relative() {
+                        superproject_root.join(p)
+                    } else {
+                        p.clone()
+                    }
+                })
+                .collect();
+            matrix
+                .iter()
+                .filter(|s| filter_set.contains(&s.path))
+                .cloned()
+                .collect()
+        }
+        None => matrix.to_vec(),
+    }
+}
+
+/// Refreshes submodule network tracking branches in parallel with bounded concurrency,
+/// isolated per-row error handling, and live progress reporting.
+pub async fn refresh_submodules_network(
+    layer: &ProcessLayer,
+    superproject_root: &Path,
+    options: SubmoduleRefreshOptions,
+    progress_tx: Option<tokio::sync::mpsc::UnboundedSender<SubmoduleRefreshProgress>>,
+    cancel: CancellationToken,
+) -> SubmoduleRefreshResult {
+    let matrix = query_submodule_matrix(layer, superproject_root).await;
+    let target_submodules = filter_submodules_by_paths(
+        &matrix.submodules,
+        superproject_root,
+        options.paths.as_deref(),
+    );
+
+    let concurrency = options.concurrency.unwrap_or(8).max(1);
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(concurrency));
+    let prune = options.prune.unwrap_or(true);
+    let tags = options.tags.unwrap_or(false);
+
+    let mut tasks = Vec::new();
+
+    for sm in target_submodules {
+        let sm_path = sm.path.clone();
+        let rel_path = sm.relative_path.clone();
+        let is_init = sm.initialized;
+        let layer_ref = layer;
+        let cancel_token = cancel.clone();
+        let sem_clone = semaphore.clone();
+        let tx = progress_tx.clone();
+        let root_clone = superproject_root.to_path_buf();
+
+        tasks.push(async move {
+            if cancel_token.is_cancelled() {
+                return SubmoduleRefreshRowResult {
+                    path: sm_path,
+                    relative_path: rel_path,
+                    status: SubmoduleRefreshStatus::Cancelled,
+                    updated_state: Some(sm),
+                };
+            }
+
+            if !is_init {
+                let reason = "submodule is not initialized".to_string();
+                if let Some(t) = &tx {
+                    let _ = t.send(SubmoduleRefreshProgress {
+                        path: sm_path.clone(),
+                        relative_path: rel_path.clone(),
+                        stage: SubmoduleRefreshStage::Skipped {
+                            reason: reason.clone(),
+                        },
+                    });
+                }
+                return SubmoduleRefreshRowResult {
+                    path: sm_path,
+                    relative_path: rel_path,
+                    status: SubmoduleRefreshStatus::Skipped { reason },
+                    updated_state: Some(sm),
+                };
+            }
+
+            let _permit = match sem_clone.acquire().await {
+                Ok(p) => p,
+                Err(_) => {
+                    return SubmoduleRefreshRowResult {
+                        path: sm_path,
+                        relative_path: rel_path,
+                        status: SubmoduleRefreshStatus::Cancelled,
+                        updated_state: Some(sm),
+                    };
+                }
+            };
+
+            if cancel_token.is_cancelled() {
+                return SubmoduleRefreshRowResult {
+                    path: sm_path,
+                    relative_path: rel_path,
+                    status: SubmoduleRefreshStatus::Cancelled,
+                    updated_state: Some(sm),
+                };
+            }
+
+            let remotes = match layer_ref
+                .run(
+                    GitCall::new(&sm_path, ["remote"]),
+                    Intent::Read,
+                    cancel_token.clone(),
+                )
+                .await
+            {
+                Ok(r) if r.ok() => {
+                    let list: Vec<String> = r
+                        .stdout_utf8_lossy()
+                        .lines()
+                        .map(|l| l.trim().to_string())
+                        .filter(|l| !l.is_empty())
+                        .collect();
+                    list
+                }
+                Ok(r) => {
+                    let err = format!("git remote failed: {}", r.stderr.trim());
+                    if let Some(t) = &tx {
+                        let _ = t.send(SubmoduleRefreshProgress {
+                            path: sm_path.clone(),
+                            relative_path: rel_path.clone(),
+                            stage: SubmoduleRefreshStage::Failed { error: err.clone() },
+                        });
+                    }
+                    return SubmoduleRefreshRowResult {
+                        path: sm_path,
+                        relative_path: rel_path,
+                        status: SubmoduleRefreshStatus::Failed { error: err },
+                        updated_state: Some(sm),
+                    };
+                }
+                Err(e) => {
+                    let err = e.to_string();
+                    if let Some(t) = &tx {
+                        let _ = t.send(SubmoduleRefreshProgress {
+                            path: sm_path.clone(),
+                            relative_path: rel_path.clone(),
+                            stage: SubmoduleRefreshStage::Failed { error: err.clone() },
+                        });
+                    }
+                    return SubmoduleRefreshRowResult {
+                        path: sm_path,
+                        relative_path: rel_path,
+                        status: SubmoduleRefreshStatus::Failed { error: err },
+                        updated_state: Some(sm),
+                    };
+                }
+            };
+
+            if remotes.is_empty() {
+                let reason = "no remotes configured in submodule".to_string();
+                if let Some(t) = &tx {
+                    let _ = t.send(SubmoduleRefreshProgress {
+                        path: sm_path.clone(),
+                        relative_path: rel_path.clone(),
+                        stage: SubmoduleRefreshStage::Skipped {
+                            reason: reason.clone(),
+                        },
+                    });
+                }
+                return SubmoduleRefreshRowResult {
+                    path: sm_path,
+                    relative_path: rel_path,
+                    status: SubmoduleRefreshStatus::Skipped { reason },
+                    updated_state: Some(sm),
+                };
+            }
+
+            if let Some(t) = &tx {
+                let _ = t.send(SubmoduleRefreshProgress {
+                    path: sm_path.clone(),
+                    relative_path: rel_path.clone(),
+                    stage: SubmoduleRefreshStage::Starting,
+                });
+            }
+
+            let mut fetch_errors = Vec::new();
+            let mut fetched_count = 0;
+
+            for remote in &remotes {
+                if cancel_token.is_cancelled() {
+                    return SubmoduleRefreshRowResult {
+                        path: sm_path,
+                        relative_path: rel_path,
+                        status: SubmoduleRefreshStatus::Cancelled,
+                        updated_state: Some(sm),
+                    };
+                }
+
+                if let Some(t) = &tx {
+                    let _ = t.send(SubmoduleRefreshProgress {
+                        path: sm_path.clone(),
+                        relative_path: rel_path.clone(),
+                        stage: SubmoduleRefreshStage::Fetching {
+                            remote: remote.clone(),
+                        },
+                    });
+                }
+
+                let mut fetch_args = vec!["fetch".to_string()];
+                if prune {
+                    fetch_args.push("--prune".to_string());
+                }
+                if tags {
+                    fetch_args.push("--tags".to_string());
+                }
+                fetch_args.push(remote.clone());
+
+                let res = layer_ref
+                    .run(
+                        GitCall::new(&sm_path, fetch_args.iter().map(|s| s.as_str())),
+                        Intent::Write,
+                        cancel_token.clone(),
+                    )
+                    .await;
+
+                match res {
+                    Ok(out) if out.ok() => {
+                        fetched_count += 1;
+                    }
+                    Ok(out) => {
+                        let err_msg = out.stderr.trim();
+                        fetch_errors.push(format!("{remote}: {err_msg}"));
+                    }
+                    Err(e) => {
+                        fetch_errors.push(format!("{remote}: {e}"));
+                    }
+                }
+            }
+
+            if !fetch_errors.is_empty() && fetched_count == 0 {
+                let error = fetch_errors.join("; ");
+                if let Some(t) = &tx {
+                    let _ = t.send(SubmoduleRefreshProgress {
+                        path: sm_path.clone(),
+                        relative_path: rel_path.clone(),
+                        stage: SubmoduleRefreshStage::Failed {
+                            error: error.clone(),
+                        },
+                    });
+                }
+                return SubmoduleRefreshRowResult {
+                    path: sm_path,
+                    relative_path: rel_path,
+                    status: SubmoduleRefreshStatus::Failed { error },
+                    updated_state: Some(sm),
+                };
+            }
+
+            let summary = format!("fetched {fetched_count} remote(s)");
+            if let Some(t) = &tx {
+                let _ = t.send(SubmoduleRefreshProgress {
+                    path: sm_path.clone(),
+                    relative_path: rel_path.clone(),
+                    stage: SubmoduleRefreshStage::Completed {
+                        summary: summary.clone(),
+                    },
+                });
+            }
+
+            let updated_state = query_single_submodule(layer_ref, &root_clone, &sm_path).await;
+
+            SubmoduleRefreshRowResult {
+                path: sm_path,
+                relative_path: rel_path,
+                status: SubmoduleRefreshStatus::Success { summary },
+                updated_state,
+            }
+        });
+    }
+
+    let rows = futures::future::join_all(tasks).await;
+
+    let total = rows.len();
+    let mut succeeded = 0;
+    let mut failed = 0;
+    let mut skipped = 0;
+
+    for r in &rows {
+        match r.status {
+            SubmoduleRefreshStatus::Success { .. } => succeeded += 1,
+            SubmoduleRefreshStatus::Failed { .. } => failed += 1,
+            SubmoduleRefreshStatus::Skipped { .. } | SubmoduleRefreshStatus::Cancelled => {
+                skipped += 1
+            }
+        }
+    }
+
+    SubmoduleRefreshResult {
+        total,
+        succeeded,
+        failed,
+        skipped,
+        rows,
+    }
+}
+
+/// Previews a bulk checkout operation across target submodules,
+/// categorizing which submodules will switch, are already on branch, or must be skipped for dirtiness.
+pub async fn preview_bulk_checkout(
+    layer: &ProcessLayer,
+    superproject_root: &Path,
+    target_branch: &str,
+    submodule_paths: Option<Vec<PathBuf>>,
+) -> BulkCheckoutPreview {
+    let matrix = query_submodule_matrix(layer, superproject_root).await;
+    let targets = filter_submodules_by_paths(
+        &matrix.submodules,
+        superproject_root,
+        submodule_paths.as_deref(),
+    );
+
+    let mut will_switch = 0;
+    let mut already_on_branch = 0;
+    let mut skipped_dirty = 0;
+    let mut missing_branch = 0;
+    let mut items = Vec::new();
+
+    for sm in targets {
+        let action = if !sm.initialized {
+            BulkCheckoutAction::Uninitialized
+        } else if sm.dirty.as_known().copied().unwrap_or(false) {
+            skipped_dirty += 1;
+            BulkCheckoutAction::SkippedDirty {
+                uncommitted_changes: true,
+            }
+        } else {
+            let current_branch_name = match sm.branch.as_known() {
+                Some(SubmoduleBranch::Named(name)) => name.clone(),
+                Some(SubmoduleBranch::Detached { commit, .. }) => {
+                    format!("detached ({commit})")
+                }
+                None => "unknown".to_string(),
+            };
+
+            if current_branch_name == target_branch {
+                already_on_branch += 1;
+                BulkCheckoutAction::AlreadyOnBranch {
+                    branch: target_branch.to_string(),
+                }
+            } else {
+                let local_check = layer
+                    .run(
+                        GitCall::new(
+                            &sm.path,
+                            [
+                                "rev-parse",
+                                "--verify",
+                                &format!("refs/heads/{target_branch}"),
+                            ],
+                        ),
+                        Intent::Read,
+                        CancellationToken::new(),
+                    )
+                    .await;
+
+                let local_exists = local_check.map(|r| r.ok()).unwrap_or(false);
+                let remote_exists = if !local_exists {
+                    let remote_check = layer
+                        .run(
+                            GitCall::new(
+                                &sm.path,
+                                [
+                                    "for-each-ref",
+                                    "--format=%(refname:short)",
+                                    &format!("refs/remotes/*/{target_branch}"),
+                                ],
+                            ),
+                            Intent::Read,
+                            CancellationToken::new(),
+                        )
+                        .await;
+                    remote_check
+                        .map(|r| r.ok() && !r.stdout_utf8_lossy().trim().is_empty())
+                        .unwrap_or(false)
+                } else {
+                    false
+                };
+
+                if local_exists || remote_exists {
+                    will_switch += 1;
+                    BulkCheckoutAction::WillSwitch {
+                        current_branch: current_branch_name,
+                        target_branch: target_branch.to_string(),
+                    }
+                } else {
+                    missing_branch += 1;
+                    BulkCheckoutAction::MissingBranch {
+                        branch: target_branch.to_string(),
+                    }
+                }
+            }
+        };
+
+        items.push(BulkCheckoutPreviewItem {
+            path: sm.path,
+            relative_path: sm.relative_path,
+            action,
+        });
+    }
+
+    BulkCheckoutPreview {
+        total: items.len(),
+        will_switch,
+        already_on_branch,
+        skipped_dirty,
+        missing_branch,
+        items,
+    }
+}
+
+/// Executes a bulk branch checkout across target submodules with dirty tree protection.
+pub async fn execute_bulk_checkout(
+    layer: &ProcessLayer,
+    superproject_root: &Path,
+    target_branch: &str,
+    submodule_paths: Option<Vec<PathBuf>>,
+    cancel: CancellationToken,
+) -> BulkOperationResult {
+    let preview =
+        preview_bulk_checkout(layer, superproject_root, target_branch, submodule_paths).await;
+    let total = preview.items.len();
+    let mut succeeded = 0;
+    let mut skipped = 0;
+    let mut failed = 0;
+    let mut results = Vec::new();
+
+    for item in preview.items {
+        if cancel.is_cancelled() {
+            skipped += 1;
+            results.push(BulkOperationItemResult {
+                path: item.path,
+                relative_path: item.relative_path,
+                outcome: BulkItemOutcome::Cancelled,
+                updated_state: None,
+            });
+            continue;
+        }
+
+        match item.action {
+            BulkCheckoutAction::WillSwitch { .. } => {
+                let res = layer
+                    .run(
+                        GitCall::new(&item.path, ["checkout", target_branch]),
+                        Intent::Write,
+                        cancel.clone(),
+                    )
+                    .await;
+
+                match res {
+                    Ok(out) if out.ok() => {
+                        succeeded += 1;
+                        let updated =
+                            query_single_submodule(layer, superproject_root, &item.path).await;
+                        results.push(BulkOperationItemResult {
+                            path: item.path,
+                            relative_path: item.relative_path,
+                            outcome: BulkItemOutcome::Success {
+                                message: format!("Switched to branch '{target_branch}'"),
+                            },
+                            updated_state: updated,
+                        });
+                    }
+                    Ok(out) => {
+                        failed += 1;
+                        results.push(BulkOperationItemResult {
+                            path: item.path,
+                            relative_path: item.relative_path,
+                            outcome: BulkItemOutcome::Failed {
+                                error: out.stderr.trim().to_string(),
+                            },
+                            updated_state: None,
+                        });
+                    }
+                    Err(e) => {
+                        failed += 1;
+                        results.push(BulkOperationItemResult {
+                            path: item.path,
+                            relative_path: item.relative_path,
+                            outcome: BulkItemOutcome::Failed {
+                                error: e.to_string(),
+                            },
+                            updated_state: None,
+                        });
+                    }
+                }
+            }
+            BulkCheckoutAction::AlreadyOnBranch { branch } => {
+                skipped += 1;
+                results.push(BulkOperationItemResult {
+                    path: item.path,
+                    relative_path: item.relative_path,
+                    outcome: BulkItemOutcome::Skipped {
+                        reason: format!("Already on branch '{branch}'"),
+                    },
+                    updated_state: None,
+                });
+            }
+            BulkCheckoutAction::SkippedDirty { .. } => {
+                skipped += 1;
+                results.push(BulkOperationItemResult {
+                    path: item.path,
+                    relative_path: item.relative_path,
+                    outcome: BulkItemOutcome::Skipped {
+                        reason: "Submodule has uncommitted changes".to_string(),
+                    },
+                    updated_state: None,
+                });
+            }
+            BulkCheckoutAction::MissingBranch { branch } => {
+                failed += 1;
+                results.push(BulkOperationItemResult {
+                    path: item.path,
+                    relative_path: item.relative_path,
+                    outcome: BulkItemOutcome::Failed {
+                        error: format!("Branch '{branch}' not found in submodule"),
+                    },
+                    updated_state: None,
+                });
+            }
+            BulkCheckoutAction::Uninitialized => {
+                skipped += 1;
+                results.push(BulkOperationItemResult {
+                    path: item.path,
+                    relative_path: item.relative_path,
+                    outcome: BulkItemOutcome::Skipped {
+                        reason: "Submodule is not initialized".to_string(),
+                    },
+                    updated_state: None,
+                });
+            }
+        }
+    }
+
+    BulkOperationResult {
+        total,
+        succeeded,
+        skipped,
+        failed,
+        items: results,
+    }
+}
+
+/// Previews a bulk pull operation across target submodules,
+/// checking behind counts, upstream configuration, and dirtiness.
+pub async fn preview_bulk_pull(
+    layer: &ProcessLayer,
+    superproject_root: &Path,
+    submodule_paths: Option<Vec<PathBuf>>,
+) -> BulkPullPreview {
+    let matrix = query_submodule_matrix(layer, superproject_root).await;
+    let targets = filter_submodules_by_paths(
+        &matrix.submodules,
+        superproject_root,
+        submodule_paths.as_deref(),
+    );
+
+    let mut will_pull = 0;
+    let mut already_up_to_date = 0;
+    let mut skipped_dirty = 0;
+    let mut skipped_no_upstream = 0;
+    let mut items = Vec::new();
+
+    for sm in targets {
+        let action = if !sm.initialized {
+            BulkPullAction::Uninitialized
+        } else if sm.dirty.as_known().copied().unwrap_or(false) {
+            skipped_dirty += 1;
+            BulkPullAction::SkippedDirty {
+                uncommitted_changes: true,
+            }
+        } else {
+            let branch_name = match sm.branch.as_known() {
+                Some(SubmoduleBranch::Named(name)) => Some(name.clone()),
+                _ => None,
+            };
+
+            let upstream = sm.remote_basis.as_known().and_then(|b| b.refname());
+
+            match (branch_name, upstream) {
+                (Some(b), Some(u)) => {
+                    let behind = sm
+                        .remote_ahead_behind
+                        .as_known()
+                        .map(|(_, behind)| *behind)
+                        .unwrap_or(0);
+                    if behind > 0 {
+                        will_pull += 1;
+                        BulkPullAction::WillPull {
+                            branch: b,
+                            upstream: u.to_string(),
+                            behind,
+                        }
+                    } else {
+                        already_up_to_date += 1;
+                        BulkPullAction::AlreadyUpToDate {
+                            branch: b,
+                            upstream: u.to_string(),
+                        }
+                    }
+                }
+                _ => {
+                    skipped_no_upstream += 1;
+                    BulkPullAction::SkippedNoUpstream
+                }
+            }
+        };
+
+        items.push(BulkPullPreviewItem {
+            path: sm.path,
+            relative_path: sm.relative_path,
+            action,
+        });
+    }
+
+    BulkPullPreview {
+        total: items.len(),
+        will_pull,
+        already_up_to_date,
+        skipped_dirty,
+        skipped_no_upstream,
+        items,
+    }
+}
+
+/// Executes a bulk pull operation across clean target submodules with upstream tracking.
+pub async fn execute_bulk_pull(
+    layer: &ProcessLayer,
+    superproject_root: &Path,
+    options: BulkPullOptions,
+    cancel: CancellationToken,
+) -> BulkOperationResult {
+    let preview = preview_bulk_pull(layer, superproject_root, options.paths.clone()).await;
+    let total = preview.items.len();
+    let mut succeeded = 0;
+    let mut skipped = 0;
+    let mut failed = 0;
+    let mut results = Vec::new();
+
+    for item in preview.items {
+        if cancel.is_cancelled() {
+            skipped += 1;
+            results.push(BulkOperationItemResult {
+                path: item.path,
+                relative_path: item.relative_path,
+                outcome: BulkItemOutcome::Cancelled,
+                updated_state: None,
+            });
+            continue;
+        }
+
+        match item.action {
+            BulkPullAction::WillPull { upstream, .. } => {
+                let parts: Vec<&str> = upstream.splitn(2, '/').collect();
+                let remote = parts.first().unwrap_or(&"origin").to_string();
+                let branch = parts.get(1).map(|b| b.to_string());
+
+                let pull_opts = PullOptions {
+                    remote,
+                    branch,
+                    strategy: options.strategy.clone(),
+                    prune: false,
+                    tags: false,
+                };
+
+                let res = repo_pull(layer, &item.path, pull_opts, cancel.clone()).await;
+
+                match res {
+                    Ok(PullOutcome::Success { summary }) => {
+                        succeeded += 1;
+                        let updated =
+                            query_single_submodule(layer, superproject_root, &item.path).await;
+                        results.push(BulkOperationItemResult {
+                            path: item.path,
+                            relative_path: item.relative_path,
+                            outcome: BulkItemOutcome::Success { message: summary },
+                            updated_state: updated,
+                        });
+                    }
+                    Ok(PullOutcome::Conflict {
+                        conflicting_files,
+                        summary,
+                    }) => {
+                        failed += 1;
+                        results.push(BulkOperationItemResult {
+                            path: item.path,
+                            relative_path: item.relative_path,
+                            outcome: BulkItemOutcome::Failed {
+                                error: format!(
+                                    "{summary}: conflicting files: {}",
+                                    conflicting_files.join(", ")
+                                ),
+                            },
+                            updated_state: None,
+                        });
+                    }
+                    Ok(PullOutcome::Failed { message }) => {
+                        failed += 1;
+                        results.push(BulkOperationItemResult {
+                            path: item.path,
+                            relative_path: item.relative_path,
+                            outcome: BulkItemOutcome::Failed { error: message },
+                            updated_state: None,
+                        });
+                    }
+                    Ok(PullOutcome::Cancelled { summary: _ }) => {
+                        skipped += 1;
+                        results.push(BulkOperationItemResult {
+                            path: item.path,
+                            relative_path: item.relative_path,
+                            outcome: BulkItemOutcome::Cancelled,
+                            updated_state: None,
+                        });
+                    }
+                    Err(e) => {
+                        failed += 1;
+                        results.push(BulkOperationItemResult {
+                            path: item.path,
+                            relative_path: item.relative_path,
+                            outcome: BulkItemOutcome::Failed { error: e },
+                            updated_state: None,
+                        });
+                    }
+                }
+            }
+            BulkPullAction::AlreadyUpToDate { upstream, .. } => {
+                skipped += 1;
+                results.push(BulkOperationItemResult {
+                    path: item.path,
+                    relative_path: item.relative_path,
+                    outcome: BulkItemOutcome::Skipped {
+                        reason: format!("Already up to date with {upstream}"),
+                    },
+                    updated_state: None,
+                });
+            }
+            BulkPullAction::SkippedDirty { .. } => {
+                skipped += 1;
+                results.push(BulkOperationItemResult {
+                    path: item.path,
+                    relative_path: item.relative_path,
+                    outcome: BulkItemOutcome::Skipped {
+                        reason: "Submodule has uncommitted changes".to_string(),
+                    },
+                    updated_state: None,
+                });
+            }
+            BulkPullAction::SkippedNoUpstream => {
+                skipped += 1;
+                results.push(BulkOperationItemResult {
+                    path: item.path,
+                    relative_path: item.relative_path,
+                    outcome: BulkItemOutcome::Skipped {
+                        reason: "No upstream configured for branch".to_string(),
+                    },
+                    updated_state: None,
+                });
+            }
+            BulkPullAction::Uninitialized => {
+                skipped += 1;
+                results.push(BulkOperationItemResult {
+                    path: item.path,
+                    relative_path: item.relative_path,
+                    outcome: BulkItemOutcome::Skipped {
+                        reason: "Submodule is not initialized".to_string(),
+                    },
+                    updated_state: None,
+                });
+            }
+        }
+    }
+
+    BulkOperationResult {
+        total,
+        succeeded,
+        skipped,
+        failed,
+        items: results,
+    }
+}
+
+/// Previews a bulk reset operation to the recorded gitlink commit in the superproject.
+pub async fn preview_bulk_reset_to_gitlink(
+    layer: &ProcessLayer,
+    superproject_root: &Path,
+    submodule_paths: Option<Vec<PathBuf>>,
+) -> BulkResetPreview {
+    let matrix = query_submodule_matrix(layer, superproject_root).await;
+    let targets = filter_submodules_by_paths(
+        &matrix.submodules,
+        superproject_root,
+        submodule_paths.as_deref(),
+    );
+
+    let mut will_reset = 0;
+    let mut already_in_sync = 0;
+    let mut skipped_dirty = 0;
+    let mut missing_object = 0;
+    let mut items = Vec::new();
+
+    for sm in targets {
+        let action = if !sm.initialized {
+            BulkResetAction::Uninitialized
+        } else if sm.dirty.as_known().copied().unwrap_or(false) {
+            skipped_dirty += 1;
+            BulkResetAction::SkippedDirty {
+                uncommitted_changes: true,
+            }
+        } else {
+            match (
+                sm.gitlink_commit.as_known(),
+                sm.gitlink_divergence.as_known(),
+            ) {
+                (Some(gitlink), Some(GitlinkDivergence::InSync)) => {
+                    already_in_sync += 1;
+                    BulkResetAction::AlreadyInSync {
+                        gitlink_commit: gitlink.clone(),
+                    }
+                }
+                (Some(gitlink), Some(GitlinkDivergence::GitlinkObjectMissingLocally { .. })) => {
+                    missing_object += 1;
+                    BulkResetAction::MissingObject {
+                        gitlink_commit: gitlink.clone(),
+                    }
+                }
+                (Some(gitlink), Some(_)) => {
+                    will_reset += 1;
+                    let current = match sm.branch.as_known() {
+                        Some(SubmoduleBranch::Detached { commit, .. }) => commit.clone(),
+                        Some(SubmoduleBranch::Named(name)) => name.clone(),
+                        None => "unknown".to_string(),
+                    };
+                    BulkResetAction::WillReset {
+                        current_commit: current,
+                        gitlink_commit: gitlink.clone(),
+                    }
+                }
+                (None, _) => BulkResetAction::NoGitlinkRecorded,
+                _ => BulkResetAction::NoGitlinkRecorded,
+            }
+        };
+
+        items.push(BulkResetPreviewItem {
+            path: sm.path,
+            relative_path: sm.relative_path,
+            action,
+        });
+    }
+
+    BulkResetPreview {
+        total: items.len(),
+        will_reset,
+        already_in_sync,
+        skipped_dirty,
+        missing_object,
+        items,
+    }
+}
+
+/// Executes a bulk reset of submodules to their recorded superproject gitlink commit,
+/// strictly refusing any dirty submodules to prevent uncommitted data loss.
+pub async fn execute_bulk_reset_to_gitlink(
+    layer: &ProcessLayer,
+    superproject_root: &Path,
+    submodule_paths: Option<Vec<PathBuf>>,
+    cancel: CancellationToken,
+) -> BulkOperationResult {
+    let preview = preview_bulk_reset_to_gitlink(layer, superproject_root, submodule_paths).await;
+    let total = preview.items.len();
+    let mut succeeded = 0;
+    let mut skipped = 0;
+    let mut failed = 0;
+    let mut results = Vec::new();
+
+    for item in preview.items {
+        if cancel.is_cancelled() {
+            skipped += 1;
+            results.push(BulkOperationItemResult {
+                path: item.path,
+                relative_path: item.relative_path,
+                outcome: BulkItemOutcome::Cancelled,
+                updated_state: None,
+            });
+            continue;
+        }
+
+        match item.action {
+            BulkResetAction::WillReset { gitlink_commit, .. } => {
+                let res = layer
+                    .run(
+                        GitCall::new(&item.path, ["checkout", &gitlink_commit]),
+                        Intent::Write,
+                        cancel.clone(),
+                    )
+                    .await;
+
+                match res {
+                    Ok(out) if out.ok() => {
+                        succeeded += 1;
+                        let updated =
+                            query_single_submodule(layer, superproject_root, &item.path).await;
+                        results.push(BulkOperationItemResult {
+                            path: item.path,
+                            relative_path: item.relative_path,
+                            outcome: BulkItemOutcome::Success {
+                                message: format!("Reset to gitlink commit {gitlink_commit}"),
+                            },
+                            updated_state: updated,
+                        });
+                    }
+                    Ok(out) => {
+                        failed += 1;
+                        results.push(BulkOperationItemResult {
+                            path: item.path,
+                            relative_path: item.relative_path,
+                            outcome: BulkItemOutcome::Failed {
+                                error: out.stderr.trim().to_string(),
+                            },
+                            updated_state: None,
+                        });
+                    }
+                    Err(e) => {
+                        failed += 1;
+                        results.push(BulkOperationItemResult {
+                            path: item.path,
+                            relative_path: item.relative_path,
+                            outcome: BulkItemOutcome::Failed {
+                                error: e.to_string(),
+                            },
+                            updated_state: None,
+                        });
+                    }
+                }
+            }
+            BulkResetAction::AlreadyInSync { gitlink_commit } => {
+                skipped += 1;
+                results.push(BulkOperationItemResult {
+                    path: item.path,
+                    relative_path: item.relative_path,
+                    outcome: BulkItemOutcome::Skipped {
+                        reason: format!("Already in sync with gitlink {gitlink_commit}"),
+                    },
+                    updated_state: None,
+                });
+            }
+            BulkResetAction::SkippedDirty { .. } => {
+                skipped += 1;
+                results.push(BulkOperationItemResult {
+                    path: item.path,
+                    relative_path: item.relative_path,
+                    outcome: BulkItemOutcome::Skipped {
+                        reason: "Submodule has uncommitted changes".to_string(),
+                    },
+                    updated_state: None,
+                });
+            }
+            BulkResetAction::MissingObject { gitlink_commit } => {
+                failed += 1;
+                results.push(BulkOperationItemResult {
+                    path: item.path,
+                    relative_path: item.relative_path,
+                    outcome: BulkItemOutcome::Failed {
+                        error: format!("Gitlink commit '{gitlink_commit}' is missing locally"),
+                    },
+                    updated_state: None,
+                });
+            }
+            BulkResetAction::NoGitlinkRecorded => {
+                skipped += 1;
+                results.push(BulkOperationItemResult {
+                    path: item.path,
+                    relative_path: item.relative_path,
+                    outcome: BulkItemOutcome::Skipped {
+                        reason: "No gitlink recorded in superproject".to_string(),
+                    },
+                    updated_state: None,
+                });
+            }
+            BulkResetAction::Uninitialized => {
+                skipped += 1;
+                results.push(BulkOperationItemResult {
+                    path: item.path,
+                    relative_path: item.relative_path,
+                    outcome: BulkItemOutcome::Skipped {
+                        reason: "Submodule is not initialized".to_string(),
+                    },
+                    updated_state: None,
+                });
+            }
+        }
+    }
+
+    BulkOperationResult {
+        total,
+        succeeded,
+        skipped,
+        failed,
+        items: results,
+    }
+}
+
+/// Bumps the superproject's recorded gitlink for a submodule to its current HEAD commit.
+/// Refuses or warns if the HEAD commit is unpushed to any remote tracking branch.
+pub async fn bump_submodule_gitlink(
+    layer: &ProcessLayer,
+    superproject_root: &Path,
+    submodule_path: &Path,
+    allow_unpushed: bool,
+) -> BumpGitlinkOutcome {
+    let rel_path = if let Ok(rel) = submodule_path.strip_prefix(superproject_root) {
+        rel.to_string_lossy().to_string()
+    } else {
+        submodule_path.to_string_lossy().to_string()
+    };
+
+    let head_commit_res = layer
+        .run(
+            GitCall::new(submodule_path, ["rev-parse", "HEAD"]),
+            Intent::Read,
+            CancellationToken::new(),
+        )
+        .await;
+
+    let head_commit = match head_commit_res {
+        Ok(r) if r.ok() => r.stdout_utf8_lossy().trim().to_string(),
+        Ok(r) => {
+            return BumpGitlinkOutcome::Failed {
+                submodule_path: submodule_path.to_path_buf(),
+                relative_path: rel_path,
+                error: format!("Could not read submodule HEAD: {}", r.stderr.trim()),
+            };
+        }
+        Err(e) => {
+            return BumpGitlinkOutcome::Failed {
+                submodule_path: submodule_path.to_path_buf(),
+                relative_path: rel_path,
+                error: e.to_string(),
+            };
+        }
+    };
+
+    let remote_contains_res = layer
+        .run(
+            GitCall::new(submodule_path, ["branch", "-r", "--contains", &head_commit]),
+            Intent::Read,
+            CancellationToken::new(),
+        )
+        .await;
+
+    let is_pushed = match remote_contains_res {
+        Ok(r) if r.ok() => !r.stdout_utf8_lossy().trim().is_empty(),
+        _ => false,
+    };
+
+    if !is_pushed && !allow_unpushed {
+        return BumpGitlinkOutcome::UnpushedRefused {
+            submodule_path: submodule_path.to_path_buf(),
+            relative_path: rel_path,
+            head_commit,
+            reason: "Submodule commit has not been pushed to any remote. Teammates checking out this gitlink will encounter missing objects.".to_string(),
+        };
+    }
+
+    let warning = if !is_pushed {
+        Some("Commit is not published to any remote. Ensure it is pushed so teammates can checkout this commit.".to_string())
+    } else {
+        None
+    };
+
+    let prev_ls = layer
+        .run(
+            GitCall::new(superproject_root, ["ls-tree", "HEAD", &rel_path]),
+            Intent::Read,
+            CancellationToken::new(),
+        )
+        .await;
+    let previous_gitlink = prev_ls.ok().filter(|r| r.ok()).and_then(|r| {
+        let out = r.stdout_utf8_lossy();
+        let parts: Vec<&str> = out.split_whitespace().collect();
+        if parts.len() >= 3 && parts[0] == "160000" {
+            Some(parts[2].to_string())
+        } else {
+            None
+        }
+    });
+
+    let add_res = layer
+        .run(
+            GitCall::new(superproject_root, ["add", &rel_path]),
+            Intent::Write,
+            CancellationToken::new(),
+        )
+        .await;
+
+    match add_res {
+        Ok(r) if r.ok() => BumpGitlinkOutcome::Success {
+            submodule_path: submodule_path.to_path_buf(),
+            relative_path: rel_path,
+            head_commit,
+            previous_gitlink,
+            warning,
+        },
+        Ok(r) => BumpGitlinkOutcome::Failed {
+            submodule_path: submodule_path.to_path_buf(),
+            relative_path: rel_path,
+            error: format!("git add failed: {}", r.stderr.trim()),
+        },
+        Err(e) => BumpGitlinkOutcome::Failed {
+            submodule_path: submodule_path.to_path_buf(),
+            relative_path: rel_path,
+            error: e.to_string(),
+        },
+    }
+}
+
+/// Bumps gitlinks in the superproject for multiple submodules.
+pub async fn bump_bulk_gitlinks(
+    layer: &ProcessLayer,
+    superproject_root: &Path,
+    submodule_paths: Option<Vec<PathBuf>>,
+    allow_unpushed: bool,
+    cancel: CancellationToken,
+) -> Vec<BumpGitlinkOutcome> {
+    let matrix = query_submodule_matrix(layer, superproject_root).await;
+    let targets = filter_submodules_by_paths(
+        &matrix.submodules,
+        superproject_root,
+        submodule_paths.as_deref(),
+    );
+
+    let mut outcomes = Vec::new();
+    for sm in targets {
+        if cancel.is_cancelled() {
+            outcomes.push(BumpGitlinkOutcome::Failed {
+                submodule_path: sm.path.clone(),
+                relative_path: sm.relative_path.clone(),
+                error: "Operation cancelled".to_string(),
+            });
+            continue;
+        }
+
+        if !sm.initialized {
+            outcomes.push(BumpGitlinkOutcome::Failed {
+                submodule_path: sm.path.clone(),
+                relative_path: sm.relative_path.clone(),
+                error: "Submodule is not initialized".to_string(),
+            });
+            continue;
+        }
+
+        let outcome =
+            bump_submodule_gitlink(layer, superproject_root, &sm.path, allow_unpushed).await;
+        outcomes.push(outcome);
+    }
+
+    outcomes
 }
 
 #[cfg(test)]
@@ -1115,11 +2519,20 @@ stray_directive = outside
         assert_eq!(submodules[1].name, "good-2");
         assert_eq!(submodules[1].path, "libs/good-2");
 
-        assert!(malformed.len() >= 4, "Must capture all malformed entries: got {malformed:?}");
-        assert!(malformed.iter().any(|m| m.reason.contains("missing closing ']'")));
+        assert!(
+            malformed.len() >= 4,
+            "Must capture all malformed entries: got {malformed:?}"
+        );
+        assert!(malformed
+            .iter()
+            .any(|m| m.reason.contains("missing closing ']'")));
         assert!(malformed.iter().any(|m| m.reason.contains("missing '='")));
-        assert!(malformed.iter().any(|m| m.reason.contains("missing mandatory 'path'")));
-        assert!(malformed.iter().any(|m| m.reason.contains("outside of any")));
+        assert!(malformed
+            .iter()
+            .any(|m| m.reason.contains("missing mandatory 'path'")));
+        assert!(malformed
+            .iter()
+            .any(|m| m.reason.contains("outside of any")));
     }
 
     #[tokio::test]
@@ -1149,7 +2562,10 @@ stray_directive = outside
             ),
         )
         .unwrap();
-        git(super_dir.path(), &["commit", "-q", "-a", "-m", "add submodules"]);
+        git(
+            super_dir.path(),
+            &["commit", "-q", "-a", "-m", "add submodules"],
+        );
 
         let layer = ProcessLayer::new(4, Duration::from_secs(5));
         let matrix = query_submodule_matrix(&layer, super_dir.path()).await;
@@ -1206,9 +2622,18 @@ stray_directive = outside
         let sub = &matrix[0];
         assert_eq!(sub.name, "absent");
         assert!(!sub.initialized, "Must be flagged as uninitialized");
-        assert!(matches!(sub.branch, Resolved::Unknown { .. }), "Branch must be unknown");
-        assert!(matches!(sub.gitlink_divergence, Resolved::Unknown { .. }), "Divergence must be unknown");
-        assert!(matches!(sub.dirty, Resolved::Unknown { .. }), "Dirty must not be reported as clean false");
+        assert!(
+            matches!(sub.branch, Resolved::Unknown { .. }),
+            "Branch must be unknown"
+        );
+        assert!(
+            matches!(sub.gitlink_divergence, Resolved::Unknown { .. }),
+            "Divergence must be unknown"
+        );
+        assert!(
+            matches!(sub.dirty, Resolved::Unknown { .. }),
+            "Dirty must not be reported as clean false"
+        );
 
         // Verify drift has DeclaredButAbsent or OrphanedDeclaration
         assert_eq!(
@@ -1248,7 +2673,10 @@ stray_directive = outside
         assert!(sub.initialized);
 
         match sub.branch.as_known() {
-            Some(SubmoduleBranch::Detached { commit, pointing_refs }) => {
+            Some(SubmoduleBranch::Detached {
+                commit,
+                pointing_refs,
+            }) => {
                 assert_eq!(commit, &head);
                 assert!(
                     pointing_refs.iter().any(|r| r == "v1.0.0" || r == "main"),
@@ -1283,7 +2711,10 @@ stray_directive = outside
 
         // 1. InSync
         let matrix = query_submodule_matrix(&layer, super_dir.path()).await;
-        assert_eq!(matrix[0].gitlink_divergence, Resolved::known(GitlinkDivergence::InSync));
+        assert_eq!(
+            matrix[0].gitlink_divergence,
+            Resolved::known(GitlinkDivergence::InSync)
+        );
 
         // 2. Ahead
         let child_in_super = super_dir.path().join("child");
@@ -1303,7 +2734,9 @@ stray_directive = outside
             .current_dir(&child_in_super)
             .output()
             .unwrap();
-        let new_child_head = String::from_utf8_lossy(&new_child_head.stdout).trim().to_string();
+        let new_child_head = String::from_utf8_lossy(&new_child_head.stdout)
+            .trim()
+            .to_string();
 
         git(super_dir.path(), &["add", "child"]);
         git(super_dir.path(), &["commit", "-q", "-m", "bump gitlink"]);
@@ -1316,7 +2749,10 @@ stray_directive = outside
         );
 
         // 4. Both: advance child on an alternate branch
-        git(&child_in_super, &["checkout", "-q", "-b", "diverged_branch"]);
+        git(
+            &child_in_super,
+            &["checkout", "-q", "-b", "diverged_branch"],
+        );
         std::fs::write(child_in_super.join("branch.txt"), "alt").unwrap();
         git(&child_in_super, &["add", "."]);
         git(&child_in_super, &["commit", "-q", "-m", "alternate"]);
@@ -1324,7 +2760,10 @@ stray_directive = outside
         let matrix = query_submodule_matrix(&layer, super_dir.path()).await;
         assert_eq!(
             matrix[0].gitlink_divergence,
-            Resolved::known(GitlinkDivergence::Both { ahead: 1, behind: 1 })
+            Resolved::known(GitlinkDivergence::Both {
+                ahead: 1,
+                behind: 1
+            })
         );
 
         // 5. GitlinkObjectMissingLocally
@@ -1365,7 +2804,16 @@ stray_directive = outside
         );
         // Wipe out .gitmodules
         let _ = std::fs::remove_file(super_dir.path().join(".gitmodules"));
-        git(super_dir.path(), &["commit", "-q", "-a", "-m", "commit gitlink without gitmodules"]);
+        git(
+            super_dir.path(),
+            &[
+                "commit",
+                "-q",
+                "-a",
+                "-m",
+                "commit gitlink without gitmodules",
+            ],
+        );
 
         let layer = ProcessLayer::new(4, Duration::from_secs(5));
         let matrix = query_submodule_matrix(&layer, super_dir.path()).await;
@@ -1383,13 +2831,18 @@ stray_directive = outside
         )
         .unwrap();
         git(super_dir.path(), &["add", ".gitmodules"]);
-        git(super_dir.path(), &["commit", "-q", "-m", "add mismatched gitmodules"]);
+        git(
+            super_dir.path(),
+            &["commit", "-q", "-m", "add mismatched gitmodules"],
+        );
 
         let matrix = query_submodule_matrix(&layer, super_dir.path()).await;
         assert_eq!(matrix.len(), 1);
         let drifts = matrix[0].drift.as_known().unwrap();
         assert!(
-            drifts.iter().any(|d| matches!(d, SubmoduleDrift::UrlMismatch { .. })),
+            drifts
+                .iter()
+                .any(|d| matches!(d, SubmoduleDrift::UrlMismatch { .. })),
             "Expected UrlMismatch, got {drifts:?}"
         );
 
@@ -1400,7 +2853,10 @@ stray_directive = outside
         )
         .unwrap();
         git(super_dir.path(), &["add", ".gitmodules"]);
-        git(super_dir.path(), &["commit", "-q", "-m", "add orphan declaration"]);
+        git(
+            super_dir.path(),
+            &["commit", "-q", "-m", "add orphan declaration"],
+        );
 
         let matrix = query_submodule_matrix(&layer, super_dir.path()).await;
         let orphan = matrix.iter().find(|s| s.name == "orphan").unwrap();
@@ -1449,7 +2905,13 @@ stray_directive = outside
         let child_in_super = super_dir.path().join("child");
         git(
             &child_in_super,
-            &["-c", "protocol.file.allow=always", "submodule", "update", "--init"],
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "update",
+                "--init",
+            ],
         );
 
         let layer = ProcessLayer::new(4, Duration::from_secs(10));
@@ -1462,7 +2924,12 @@ stray_directive = outside
 
         // Depth 2: child and grandchild
         let depth_2 = query_submodule_matrix_with_depth(&layer, super_dir.path(), 2).await;
-        assert_eq!(depth_2.len(), 2, "Expected child and grandchild: got {:?}", depth_2.iter().map(|s| &s.name).collect::<Vec<_>>());
+        assert_eq!(
+            depth_2.len(),
+            2,
+            "Expected child and grandchild: got {:?}",
+            depth_2.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
         assert_eq!(depth_2[0].name, "child");
         assert_eq!(depth_2[0].depth, 1);
         assert_eq!(depth_2[1].name, "grandchild");
@@ -1522,5 +2989,602 @@ stray_directive = outside
         let b = single_b.unwrap();
         assert_eq!(b.name, "sub-b");
         assert_eq!(b.dirty, Resolved::known(false));
+    }
+
+    #[tokio::test]
+    async fn test_refresh_submodules_network_parallel_and_isolated_failures() {
+        let super_dir = tempfile::tempdir().unwrap();
+        let child_a = tempfile::tempdir().unwrap();
+        let child_b = tempfile::tempdir().unwrap();
+
+        let _commit_a = init_bare_commit_repo(child_a.path());
+        let _commit_b = init_bare_commit_repo(child_b.path());
+
+        git(super_dir.path(), &["init", "-q", "-b", "main"]);
+        git(
+            super_dir.path(),
+            &["config", "user.email", "test@example.com"],
+        );
+        git(super_dir.path(), &["config", "user.name", "Test"]);
+        std::fs::write(super_dir.path().join("root.txt"), "root").unwrap();
+        git(super_dir.path(), &["add", "."]);
+        git(super_dir.path(), &["commit", "-q", "-m", "init super"]);
+
+        git(
+            super_dir.path(),
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                child_a.path().to_str().unwrap(),
+                "sub-a",
+            ],
+        );
+        git(
+            super_dir.path(),
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                child_b.path().to_str().unwrap(),
+                "sub-b",
+            ],
+        );
+        git(super_dir.path(), &["commit", "-q", "-m", "add submodules"]);
+
+        // Break remote in sub-b so it fails to fetch
+        let sub_b_path = super_dir.path().join("sub-b");
+        git(
+            &sub_b_path,
+            &[
+                "remote",
+                "set-url",
+                "origin",
+                "file:///nonexistent/repo.git",
+            ],
+        );
+
+        let layer = ProcessLayer::new(8, Duration::from_secs(5));
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+
+        let refresh_result = refresh_submodules_network(
+            &layer,
+            super_dir.path(),
+            SubmoduleRefreshOptions {
+                paths: None,
+                concurrency: Some(4),
+                prune: Some(true),
+                tags: Some(false),
+            },
+            Some(tx),
+            CancellationToken::new(),
+        )
+        .await;
+
+        assert_eq!(refresh_result.total, 2);
+        assert_eq!(refresh_result.succeeded, 1, "sub-a must succeed");
+        assert_eq!(refresh_result.failed, 1, "sub-b must fail");
+
+        // Verify failure isolation: sub-a succeeded and received updated state
+        let row_a = refresh_result
+            .rows
+            .iter()
+            .find(|r| r.relative_path == "sub-a")
+            .unwrap();
+        assert!(matches!(
+            row_a.status,
+            SubmoduleRefreshStatus::Success { .. }
+        ));
+        assert!(row_a.updated_state.is_some());
+
+        // sub-b failed with error message and did not panic or halt sub-a
+        let row_b = refresh_result
+            .rows
+            .iter()
+            .find(|r| r.relative_path == "sub-b")
+            .unwrap();
+        assert!(matches!(
+            row_b.status,
+            SubmoduleRefreshStatus::Failed { .. }
+        ));
+
+        // Verify progress events were emitted
+        let mut progress_events = Vec::new();
+        while let Ok(evt) = rx.try_recv() {
+            progress_events.push(evt);
+        }
+        assert!(
+            !progress_events.is_empty(),
+            "Progress events must be emitted"
+        );
+        assert!(progress_events.iter().any(|e| e.relative_path == "sub-a"));
+        assert!(progress_events.iter().any(|e| e.relative_path == "sub-b"));
+    }
+
+    #[tokio::test]
+    async fn test_refresh_submodules_network_read_only_command_audit() {
+        let super_dir = tempfile::tempdir().unwrap();
+        let upstream_a = tempfile::tempdir().unwrap();
+        let upstream_b = tempfile::tempdir().unwrap();
+
+        let _commit_a = init_bare_commit_repo(upstream_a.path());
+        let _commit_b = init_bare_commit_repo(upstream_b.path());
+
+        git(super_dir.path(), &["init", "-q", "-b", "main"]);
+        git(
+            super_dir.path(),
+            &["config", "user.email", "test@example.com"],
+        );
+        git(super_dir.path(), &["config", "user.name", "Test"]);
+        std::fs::write(super_dir.path().join("root.txt"), "root").unwrap();
+        git(super_dir.path(), &["add", "."]);
+        git(super_dir.path(), &["commit", "-q", "-m", "init super"]);
+
+        git(
+            super_dir.path(),
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                upstream_a.path().to_str().unwrap(),
+                "sub-a",
+            ],
+        );
+        git(
+            super_dir.path(),
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                upstream_b.path().to_str().unwrap(),
+                "sub-b",
+            ],
+        );
+        git(super_dir.path(), &["commit", "-q", "-m", "add submodules"]);
+
+        // Add a new commit in upstream_a
+        std::fs::write(upstream_a.path().join("upstream_new.txt"), "new commit").unwrap();
+        git(upstream_a.path(), &["add", "."]);
+        git(
+            upstream_a.path(),
+            &["commit", "-q", "-m", "upstream commit 2"],
+        );
+
+        let sub_a_path = super_dir.path().join("sub-a");
+        let sub_b_path = super_dir.path().join("sub-b");
+
+        // sub-a: create untracked file + dirty tracked file
+        std::fs::write(sub_a_path.join("untracked.txt"), "untracked data").unwrap();
+        std::fs::write(sub_a_path.join("f.txt"), "modified in working tree").unwrap();
+
+        // sub-b: create staged modification
+        std::fs::write(sub_b_path.join("staged.txt"), "staged content").unwrap();
+        git(&sub_b_path, &["add", "staged.txt"]);
+
+        // Record pre-refresh hashes and HEADs
+        let head_a_before = {
+            let out = Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(&sub_a_path)
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        let head_b_before = {
+            let out = Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(&sub_b_path)
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        let status_a_before = {
+            let out = Command::new("git")
+                .args(["status", "--porcelain=v2"])
+                .current_dir(&sub_a_path)
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).to_string()
+        };
+        let status_b_before = {
+            let out = Command::new("git")
+                .args(["status", "--porcelain=v2"])
+                .current_dir(&sub_b_path)
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).to_string()
+        };
+
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+        let log_start_len = layer.log.snapshot().len();
+
+        let result = refresh_submodules_network(
+            &layer,
+            super_dir.path(),
+            SubmoduleRefreshOptions::default(),
+            None,
+            CancellationToken::new(),
+        )
+        .await;
+
+        assert_eq!(result.succeeded, 2);
+
+        // 1. Working copy, index, and HEAD bitwise invariant verification
+        let head_a_after = {
+            let out = Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(&sub_a_path)
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        let head_b_after = {
+            let out = Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(&sub_b_path)
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        let status_a_after = {
+            let out = Command::new("git")
+                .args(["status", "--porcelain=v2"])
+                .current_dir(&sub_a_path)
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).to_string()
+        };
+        let status_b_after = {
+            let out = Command::new("git")
+                .args(["status", "--porcelain=v2"])
+                .current_dir(&sub_b_path)
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).to_string()
+        };
+
+        assert_eq!(head_a_before, head_a_after, "HEAD in sub-a must not move");
+        assert_eq!(head_b_before, head_b_after, "HEAD in sub-b must not move");
+        assert_eq!(
+            status_a_before, status_a_after,
+            "Working copy/index in sub-a must be untouched"
+        );
+        assert_eq!(
+            status_b_before, status_b_after,
+            "Working copy/index in sub-b must be untouched"
+        );
+        assert_eq!(
+            std::fs::read_to_string(sub_a_path.join("f.txt")).unwrap(),
+            "modified in working tree"
+        );
+        assert_eq!(
+            std::fs::read_to_string(sub_a_path.join("untracked.txt")).unwrap(),
+            "untracked data"
+        );
+        assert_eq!(
+            std::fs::read_to_string(sub_b_path.join("staged.txt")).unwrap(),
+            "staged content"
+        );
+
+        // 2. Read-only command audit: assert that NO mutating commands were run in submodules
+        let log_entries = layer.log.snapshot();
+        let refresh_entries = &log_entries[log_start_len..];
+
+        let disallowed_commands = [
+            "checkout", "merge", "rebase", "reset", "clean", "commit", "add",
+        ];
+        for entry in refresh_entries {
+            for arg in &entry.args {
+                for disallowed in disallowed_commands {
+                    assert_ne!(
+                        arg.as_str(),
+                        disallowed,
+                        "Command audit failure: disallowed command '{disallowed}' executed during network refresh: {:?}",
+                        entry.args
+                    );
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bulk_checkout_preview_and_execute_with_dirty_protection() {
+        let super_dir = tempfile::tempdir().unwrap();
+        let child_a = tempfile::tempdir().unwrap();
+        let child_b = tempfile::tempdir().unwrap();
+
+        let _commit_a = init_bare_commit_repo(child_a.path());
+        let _commit_b = init_bare_commit_repo(child_b.path());
+
+        git(super_dir.path(), &["init", "-q", "-b", "main"]);
+        git(
+            super_dir.path(),
+            &["config", "user.email", "test@example.com"],
+        );
+        git(super_dir.path(), &["config", "user.name", "Test"]);
+        std::fs::write(super_dir.path().join("root.txt"), "root").unwrap();
+        git(super_dir.path(), &["add", "."]);
+        git(super_dir.path(), &["commit", "-q", "-m", "init super"]);
+
+        git(
+            super_dir.path(),
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                child_a.path().to_str().unwrap(),
+                "sub-a",
+            ],
+        );
+        git(
+            super_dir.path(),
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                child_b.path().to_str().unwrap(),
+                "sub-b",
+            ],
+        );
+        git(super_dir.path(), &["commit", "-q", "-m", "add submodules"]);
+
+        let sub_a_path = super_dir.path().join("sub-a");
+        let sub_b_path = super_dir.path().join("sub-b");
+
+        // Create 'feature' branch in both submodules
+        git(&sub_a_path, &["branch", "feature"]);
+        git(&sub_b_path, &["branch", "feature"]);
+
+        // Make sub-a dirty
+        std::fs::write(sub_a_path.join("uncommitted.txt"), "dirty work").unwrap();
+
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+
+        // Preview
+        let preview = preview_bulk_checkout(&layer, super_dir.path(), "feature", None).await;
+        assert_eq!(preview.total, 2);
+        assert_eq!(preview.will_switch, 1, "sub-b will switch");
+        assert_eq!(preview.skipped_dirty, 1, "sub-a skipped as dirty");
+
+        // Execute
+        let outcome = execute_bulk_checkout(
+            &layer,
+            super_dir.path(),
+            "feature",
+            None,
+            CancellationToken::new(),
+        )
+        .await;
+        assert_eq!(outcome.succeeded, 1);
+        assert_eq!(outcome.skipped, 1);
+        assert_eq!(outcome.failed, 0);
+
+        // Verify sub-a was skipped and remained dirty
+        let res_a = outcome
+            .items
+            .iter()
+            .find(|i| i.relative_path == "sub-a")
+            .unwrap();
+        assert!(matches!(res_a.outcome, BulkItemOutcome::Skipped { .. }));
+        assert_eq!(
+            std::fs::read_to_string(sub_a_path.join("uncommitted.txt")).unwrap(),
+            "dirty work"
+        );
+
+        // Verify sub-b switched to 'feature'
+        let res_b = outcome
+            .items
+            .iter()
+            .find(|i| i.relative_path == "sub-b")
+            .unwrap();
+        assert!(matches!(res_b.outcome, BulkItemOutcome::Success { .. }));
+        let current_b_branch = {
+            let out = Command::new("git")
+                .args(["branch", "--show-current"])
+                .current_dir(&sub_b_path)
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        assert_eq!(current_b_branch, "feature");
+    }
+
+    #[tokio::test]
+    async fn test_bulk_reset_to_gitlink_refuses_dirty_submodules() {
+        let super_dir = tempfile::tempdir().unwrap();
+        let child_a = tempfile::tempdir().unwrap();
+        let child_b = tempfile::tempdir().unwrap();
+
+        let _commit_a = init_bare_commit_repo(child_a.path());
+        let _commit_b = init_bare_commit_repo(child_b.path());
+
+        git(super_dir.path(), &["init", "-q", "-b", "main"]);
+        git(
+            super_dir.path(),
+            &["config", "user.email", "test@example.com"],
+        );
+        git(super_dir.path(), &["config", "user.name", "Test"]);
+        std::fs::write(super_dir.path().join("root.txt"), "root").unwrap();
+        git(super_dir.path(), &["add", "."]);
+        git(super_dir.path(), &["commit", "-q", "-m", "init super"]);
+
+        git(
+            super_dir.path(),
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                child_a.path().to_str().unwrap(),
+                "sub-a",
+            ],
+        );
+        git(
+            super_dir.path(),
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                child_b.path().to_str().unwrap(),
+                "sub-b",
+            ],
+        );
+        git(super_dir.path(), &["commit", "-q", "-m", "add submodules"]);
+
+        let sub_a_path = super_dir.path().join("sub-a");
+        let sub_b_path = super_dir.path().join("sub-b");
+
+        let gitlink_a = {
+            let out = Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(&sub_a_path)
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+
+        // Commit in sub-a so it diverges
+        std::fs::write(sub_a_path.join("new_a.txt"), "diverged a").unwrap();
+        git(&sub_a_path, &["add", "."]);
+        git(&sub_a_path, &["commit", "-q", "-m", "diverged commit in a"]);
+
+        // Commit in sub-b AND dirty it
+        std::fs::write(sub_b_path.join("new_b.txt"), "diverged b").unwrap();
+        git(&sub_b_path, &["add", "."]);
+        git(&sub_b_path, &["commit", "-q", "-m", "diverged commit in b"]);
+        std::fs::write(sub_b_path.join("dirty.txt"), "uncommitted dirty edits").unwrap();
+
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+
+        // Preview reset
+        let preview = preview_bulk_reset_to_gitlink(&layer, super_dir.path(), None).await;
+        assert_eq!(preview.will_reset, 1, "sub-a will reset");
+        assert_eq!(preview.skipped_dirty, 1, "sub-b skipped dirty");
+
+        // Execute reset
+        let outcome =
+            execute_bulk_reset_to_gitlink(&layer, super_dir.path(), None, CancellationToken::new())
+                .await;
+        assert_eq!(outcome.succeeded, 1);
+        assert_eq!(outcome.skipped, 1);
+
+        // sub-a was reset to recorded gitlink commit
+        let head_a_after = {
+            let out = Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(&sub_a_path)
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        assert_eq!(
+            head_a_after, gitlink_a,
+            "sub-a must be reset to recorded gitlink"
+        );
+
+        // sub-b was refused and dirty file remains intact
+        assert_eq!(
+            std::fs::read_to_string(sub_b_path.join("dirty.txt")).unwrap(),
+            "uncommitted dirty edits"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_gitlink_bumping_with_unpushed_warning() {
+        let super_dir = tempfile::tempdir().unwrap();
+        let upstream = tempfile::tempdir().unwrap();
+
+        let _commit = init_bare_commit_repo(upstream.path());
+
+        git(super_dir.path(), &["init", "-q", "-b", "main"]);
+        git(
+            super_dir.path(),
+            &["config", "user.email", "test@example.com"],
+        );
+        git(super_dir.path(), &["config", "user.name", "Test"]);
+        std::fs::write(super_dir.path().join("root.txt"), "root").unwrap();
+        git(super_dir.path(), &["add", "."]);
+        git(super_dir.path(), &["commit", "-q", "-m", "init super"]);
+
+        git(
+            super_dir.path(),
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                upstream.path().to_str().unwrap(),
+                "sub-lib",
+            ],
+        );
+        git(super_dir.path(), &["commit", "-q", "-m", "add sub-lib"]);
+
+        let sub_path = super_dir.path().join("sub-lib");
+
+        // Make a new commit locally in sub-lib that has NOT been pushed to upstream
+        std::fs::write(sub_path.join("unpushed.txt"), "unpushed code").unwrap();
+        git(&sub_path, &["add", "."]);
+        git(
+            &sub_path,
+            &["commit", "-q", "-m", "unpushed commit in submodule"],
+        );
+
+        let new_head = {
+            let out = Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(&sub_path)
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+
+        let layer = ProcessLayer::new(4, Duration::from_secs(5));
+
+        // 1. Bump with allow_unpushed = false: must be refused with UnpushedRefused
+        let refused_outcome =
+            bump_submodule_gitlink(&layer, super_dir.path(), &sub_path, false).await;
+        assert!(matches!(
+            refused_outcome,
+            BumpGitlinkOutcome::UnpushedRefused { .. }
+        ));
+
+        // 2. Bump with allow_unpushed = true: succeeds with warning
+        let success_outcome =
+            bump_submodule_gitlink(&layer, super_dir.path(), &sub_path, true).await;
+        match success_outcome {
+            BumpGitlinkOutcome::Success {
+                head_commit,
+                warning,
+                ..
+            } => {
+                assert_eq!(head_commit, new_head);
+                assert!(
+                    warning.is_some(),
+                    "Warning about unpushed commit must be returned"
+                );
+            }
+            other => panic!("Expected Success with warning, got: {other:?}"),
+        }
+
+        // 3. Staged gitlink in superproject index must match new_head
+        let ls_files = {
+            let out = Command::new("git")
+                .args(["ls-files", "--stage", "sub-lib"])
+                .current_dir(super_dir.path())
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).to_string()
+        };
+        assert!(
+            ls_files.contains(&new_head),
+            "New gitlink commit must be staged in superproject index"
+        );
     }
 }

@@ -87,13 +87,11 @@ fn parse_path_history(stdout: &str) -> Vec<CommitSummary> {
                         path_at_commit = Some(new_p.to_string());
                     }
                 }
-            } else if !status_raw.is_empty() {
-                if i < tokens.len() {
-                    let p = tokens[i];
-                    i += 1;
-                    if path_at_commit.is_none() {
-                        path_at_commit = Some(p.to_string());
-                    }
+            } else if !status_raw.is_empty() && i < tokens.len() {
+                let p = tokens[i];
+                i += 1;
+                if path_at_commit.is_none() {
+                    path_at_commit = Some(p.to_string());
                 }
             }
         }
@@ -124,7 +122,9 @@ pub async fn query_history_page(
             "--name-status".to_string(),
             "-M".to_string(),
             format!("--max-count={max_count}"),
-            format!("--format=%H{FIELD_SEP}%P{FIELD_SEP}%an{FIELD_SEP}%ae{FIELD_SEP}%aI{FIELD_SEP}%s"),
+            format!(
+                "--format=%H{FIELD_SEP}%P{FIELD_SEP}%an{FIELD_SEP}%ae{FIELD_SEP}%aI{FIELD_SEP}%s"
+            ),
             "-z".to_string(),
             "--".to_string(),
             path.clone(),
@@ -153,7 +153,9 @@ pub async fn query_history_page(
     }
     args.push(format!("--skip={skip}"));
     args.push(format!("--max-count={limit}"));
-    args.push(format!("--format=%H{FIELD_SEP}%P{FIELD_SEP}%an{FIELD_SEP}%ae{FIELD_SEP}%aI{FIELD_SEP}%s"));
+    args.push(format!(
+        "--format=%H{FIELD_SEP}%P{FIELD_SEP}%an{FIELD_SEP}%ae{FIELD_SEP}%aI{FIELD_SEP}%s"
+    ));
     args.push("-z".to_string());
 
     let result = layer
@@ -313,7 +315,10 @@ pub async fn search_history(
 
     let mut args = vec!["log".to_string(), "--date-order".to_string()];
 
-    let scope = options.scope.as_ref().unwrap_or(&HistoryScope::CurrentBranch);
+    let scope = options
+        .scope
+        .as_ref()
+        .unwrap_or(&HistoryScope::CurrentBranch);
     match scope {
         HistoryScope::CurrentBranch => {}
         HistoryScope::AllBranches => args.push("--branches".to_string()),
@@ -370,7 +375,9 @@ pub async fn search_history(
         args.push(format!("--skip={skip}"));
     }
     args.push(format!("--max-count={fetch_count}"));
-    args.push(format!("--format=%H{FIELD_SEP}%P{FIELD_SEP}%an{FIELD_SEP}%ae{FIELD_SEP}%aI{FIELD_SEP}%s"));
+    args.push(format!(
+        "--format=%H{FIELD_SEP}%P{FIELD_SEP}%an{FIELD_SEP}%ae{FIELD_SEP}%aI{FIELD_SEP}%s"
+    ));
     args.push("-z".to_string());
 
     let path_filter = match (&options.path, scope) {
@@ -766,7 +773,11 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(res_path.commits.len(), 2);
-        let subjects: Vec<&str> = res_path.commits.iter().map(|c| c.subject.as_str()).collect();
+        let subjects: Vec<&str> = res_path
+            .commits
+            .iter()
+            .map(|c| c.subject.as_str())
+            .collect();
         assert_eq!(subjects, vec!["commit 3 in src", "commit 1 in src"]);
 
         // Filter by date range (1 day ago to tomorrow)
@@ -838,11 +849,19 @@ mod tests {
     #[tokio::test]
     async fn search_history_by_content_regex() {
         let dir = init_repo();
-        std::fs::write(dir.path().join("config.rs"), "const TIMEOUT_SECS: u64 = 30;\n").unwrap();
+        std::fs::write(
+            dir.path().join("config.rs"),
+            "const TIMEOUT_SECS: u64 = 30;\n",
+        )
+        .unwrap();
         git(dir.path(), &["add", "-A"]);
         git(dir.path(), &["commit", "-q", "-m", "add timeout"]);
 
-        std::fs::write(dir.path().join("config.rs"), "const TIMEOUT_SECS: u64 = 30;\nconst MAX_RETRIES: u32 = 5;\n").unwrap();
+        std::fs::write(
+            dir.path().join("config.rs"),
+            "const TIMEOUT_SECS: u64 = 30;\nconst MAX_RETRIES: u32 = 5;\n",
+        )
+        .unwrap();
         git(dir.path(), &["add", "-A"]);
         git(dir.path(), &["commit", "-q", "-m", "add retries"]);
 
@@ -930,14 +949,9 @@ mod tests {
         let token = CancellationToken::new();
         token.cancel(); // Pre-cancelled
 
-        let err = search_history(
-            &layer,
-            dir.path(),
-            &HistorySearchOptions::default(),
-            token,
-        )
-        .await
-        .unwrap_err();
+        let err = search_history(&layer, dir.path(), &HistorySearchOptions::default(), token)
+            .await
+            .unwrap_err();
 
         assert!(err.contains("cancelled"));
     }

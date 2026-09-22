@@ -136,14 +136,9 @@ pub enum RebaseOutcome {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "status")]
 pub enum OperationStepOutcome {
-    Completed {
-        new_head: String,
-        message: String,
-    },
+    Completed { new_head: String, message: String },
     StillInProgress(ActiveOperationDetail),
-    Failed {
-        message: String,
-    },
+    Failed { message: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -288,7 +283,9 @@ pub async fn query_active_operation(
         Err(_) => return Ok(None),
     };
 
-    let conflicting_files = query_conflicting_files(layer, root).await.unwrap_or_default();
+    let conflicting_files = query_conflicting_files(layer, root)
+        .await
+        .unwrap_or_default();
 
     if git_dir.join("MERGE_HEAD").exists() {
         let merge_head = std::fs::read_to_string(git_dir.join("MERGE_HEAD"))
@@ -340,10 +337,18 @@ pub async fn query_active_operation(
             .ok();
 
         let done_count = std::fs::read_to_string(active_dir.join("done"))
-            .map(|s| s.lines().filter(|l| !l.trim().is_empty() && !l.starts_with('#')).count())
+            .map(|s| {
+                s.lines()
+                    .filter(|l| !l.trim().is_empty() && !l.starts_with('#'))
+                    .count()
+            })
             .unwrap_or(0);
         let todo_count = std::fs::read_to_string(active_dir.join("git-rebase-todo"))
-            .map(|s| s.lines().filter(|l| !l.trim().is_empty() && !l.starts_with('#')).count())
+            .map(|s| {
+                s.lines()
+                    .filter(|l| !l.trim().is_empty() && !l.starts_with('#'))
+                    .count()
+            })
             .unwrap_or(0);
         let total = done_count + todo_count;
 
@@ -485,7 +490,9 @@ pub async fn start_merge(
         });
     }
 
-    let conflicts = query_conflicting_files(layer, root).await.unwrap_or_default();
+    let conflicts = query_conflicting_files(layer, root)
+        .await
+        .unwrap_or_default();
     let git_dir = get_git_dir(layer, root).await.unwrap_or_default();
     if !conflicts.is_empty() || git_dir.join("MERGE_HEAD").exists() {
         return Ok(MergeOutcome::Conflict {
@@ -541,7 +548,9 @@ pub async fn start_cherry_pick(
         });
     }
 
-    let conflicts = query_conflicting_files(layer, root).await.unwrap_or_default();
+    let conflicts = query_conflicting_files(layer, root)
+        .await
+        .unwrap_or_default();
     let git_dir = get_git_dir(layer, root).await.unwrap_or_default();
     if !conflicts.is_empty() || git_dir.join("CHERRY_PICK_HEAD").exists() {
         return Ok(CherryPickOutcome::Conflict {
@@ -594,7 +603,9 @@ pub async fn start_revert(
         });
     }
 
-    let conflicts = query_conflicting_files(layer, root).await.unwrap_or_default();
+    let conflicts = query_conflicting_files(layer, root)
+        .await
+        .unwrap_or_default();
     let git_dir = get_git_dir(layer, root).await.unwrap_or_default();
     if !conflicts.is_empty() || git_dir.join("REVERT_HEAD").exists() {
         return Ok(RevertOutcome::Conflict {
@@ -682,7 +693,8 @@ pub async fn start_interactive_rebase(
                     if !trimmed.is_empty() {
                         todo_lines.push_str(&format!("pick {} {}\n", item.commit, item.subject));
                         let escaped = trimmed.replace('\\', "\\\\").replace('"', "\\\"");
-                        todo_lines.push_str(&format!("exec git commit --amend -m \"{}\"\n", escaped));
+                        todo_lines
+                            .push_str(&format!("exec git commit --amend -m \"{}\"\n", escaped));
                         continue;
                     }
                 }
@@ -697,7 +709,8 @@ pub async fn start_interactive_rebase(
                     if !trimmed.is_empty() {
                         todo_lines.push_str(&format!("fixup {} {}\n", item.commit, item.subject));
                         let escaped = trimmed.replace('\\', "\\\\").replace('"', "\\\"");
-                        todo_lines.push_str(&format!("exec git commit --amend -m \"{}\"\n", escaped));
+                        todo_lines
+                            .push_str(&format!("exec git commit --amend -m \"{}\"\n", escaped));
                         continue;
                     }
                 }
@@ -721,7 +734,10 @@ pub async fn start_interactive_rebase(
         .map_err(|e| format!("Failed to write rebase plan: {e}"))?;
 
     let call = GitCall::new(root, ["rebase", "-i", base_ref])
-        .with_env("GIT_SEQUENCE_EDITOR", format!("cp \"{}\"", temp_plan.display()))
+        .with_env(
+            "GIT_SEQUENCE_EDITOR",
+            format!("cp \"{}\"", temp_plan.display()),
+        )
         .with_env("GIT_EDITOR", "true");
 
     let res = layer
@@ -749,7 +765,8 @@ pub async fn start_interactive_rebase(
     }
 
     let git_dir = get_git_dir(layer, root).await.unwrap_or_default();
-    let rebase_active = git_dir.join("rebase-merge").is_dir() || git_dir.join("rebase-apply").is_dir();
+    let rebase_active =
+        git_dir.join("rebase-merge").is_dir() || git_dir.join("rebase-apply").is_dir();
 
     if rebase_active {
         let active_dir = if git_dir.join("rebase-merge").is_dir() {
@@ -760,7 +777,9 @@ pub async fn start_interactive_rebase(
         let stopped_sha = std::fs::read_to_string(active_dir.join("stopped-sha"))
             .map(|s| s.trim().to_string())
             .ok();
-        let conflicts = query_conflicting_files(layer, root).await.unwrap_or_default();
+        let conflicts = query_conflicting_files(layer, root)
+            .await
+            .unwrap_or_default();
 
         return Ok(RebaseOutcome::Paused {
             stopped_sha,
@@ -838,7 +857,9 @@ pub async fn skip_operation(
 
     let call = match active.kind {
         ActiveOperationKind::Merge => {
-            return Err("Merge operations do not support skipping. You may continue or abort.".to_string());
+            return Err(
+                "Merge operations do not support skipping. You may continue or abort.".to_string(),
+            );
         }
         ActiveOperationKind::Rebase => {
             GitCall::new(root, ["rebase", "--skip"]).with_env("GIT_EDITOR", "true")
@@ -886,13 +907,18 @@ pub async fn abort_operation(layer: &ProcessLayer, root: &Path) -> Result<AbortO
     let active = query_active_operation(layer, root).await?;
     let active = match active {
         Some(a) => a,
-        None => return Err("No integration operation is currently in progress to abort.".to_string()),
+        None => {
+            return Err("No integration operation is currently in progress to abort.".to_string())
+        }
     };
 
     let (op_name, call) = match active.kind {
         ActiveOperationKind::Merge => ("Merge", GitCall::new(root, ["merge", "--abort"])),
         ActiveOperationKind::Rebase => ("Rebase", GitCall::new(root, ["rebase", "--abort"])),
-        ActiveOperationKind::CherryPick => ("Cherry-pick", GitCall::new(root, ["cherry-pick", "--abort"])),
+        ActiveOperationKind::CherryPick => (
+            "Cherry-pick",
+            GitCall::new(root, ["cherry-pick", "--abort"]),
+        ),
         ActiveOperationKind::Revert => ("Revert", GitCall::new(root, ["revert", "--abort"])),
     };
 
@@ -902,7 +928,10 @@ pub async fn abort_operation(layer: &ProcessLayer, root: &Path) -> Result<AbortO
         .map_err(|e| format!("Process error aborting operation: {e}"))?;
 
     if !res.ok() {
-        return Err(format!("git {op_name} --abort failed: {}", res.stderr.trim()));
+        return Err(format!(
+            "git {op_name} --abort failed: {}",
+            res.stderr.trim()
+        ));
     }
 
     let head_res = layer
@@ -1065,7 +1094,10 @@ mod tests {
             _ => panic!("Expected Success, got {:?}", clean_outcome),
         }
 
-        assert!(query_active_operation(&layer, root).await.unwrap().is_none());
+        assert!(query_active_operation(&layer, root)
+            .await
+            .unwrap()
+            .is_none());
     }
 
     #[tokio::test]
@@ -1145,14 +1177,19 @@ mod tests {
         .unwrap();
 
         match outcome {
-            MergeOutcome::Conflict { conflicting_files, .. } => {
+            MergeOutcome::Conflict {
+                conflicting_files, ..
+            } => {
                 assert!(conflicting_files.contains(&"file1.txt".to_string()));
             }
             _ => panic!("Expected Conflict, got {:?}", outcome),
         }
 
         // Active operation is detected
-        let active = query_active_operation(&layer, root).await.unwrap().expect("active operation");
+        let active = query_active_operation(&layer, root)
+            .await
+            .unwrap()
+            .expect("active operation");
         assert_eq!(active.kind, ActiveOperationKind::Merge);
         assert_eq!(active.conflicting_files, vec!["file1.txt"]);
 
@@ -1164,6 +1201,9 @@ mod tests {
         assert!(abort.summary.contains("Restored branch 'sideB'"));
 
         // Verify active operation is now gone and tree is clean
-        assert!(query_active_operation(&layer, root).await.unwrap().is_none());
+        assert!(query_active_operation(&layer, root)
+            .await
+            .unwrap()
+            .is_none());
     }
 }

@@ -702,5 +702,159 @@ export interface ResetOutcome {
   summary: string;
 }
 
+export type SubmoduleRefreshStage =
+  | { stage: "starting" }
+  | { stage: "fetching"; remote: string }
+  | { stage: "completed"; summary: string }
+  | { stage: "skipped"; reason: string }
+  | { stage: "failed"; error: string };
 
+export interface SubmoduleRefreshProgress {
+  path: string;
+  relative_path: string;
+  stage: SubmoduleRefreshStage;
+}
 
+export type SubmoduleRefreshStatus =
+  | { status: "success"; summary: string }
+  | { status: "skipped"; reason: string }
+  | { status: "failed"; error: string }
+  | { status: "cancelled" };
+
+export interface SubmoduleRefreshRowResult {
+  path: string;
+  relative_path: string;
+  status: SubmoduleRefreshStatus;
+  updated_state?: SubmoduleState | null;
+}
+
+export interface SubmoduleRefreshResult {
+  total: number;
+  succeeded: number;
+  failed: number;
+  skipped: number;
+  rows: SubmoduleRefreshRowResult[];
+}
+
+export interface SubmoduleRefreshOptions {
+  paths?: string[] | null;
+  concurrency?: number | null;
+  prune?: boolean | null;
+  tags?: boolean | null;
+}
+
+export type BulkCheckoutAction =
+  | { type: "will_switch"; current_branch: string; target_branch: string }
+  | { type: "already_on_branch"; branch: string }
+  | { type: "skipped_dirty"; uncommitted_changes: boolean }
+  | { type: "missing_branch"; branch: string }
+  | { type: "uninitialized" };
+
+export interface BulkCheckoutPreviewItem {
+  path: string;
+  relative_path: string;
+  action: BulkCheckoutAction;
+}
+
+export interface BulkCheckoutPreview {
+  total: number;
+  will_switch: number;
+  already_on_branch: number;
+  skipped_dirty: number;
+  missing_branch: number;
+  items: BulkCheckoutPreviewItem[];
+}
+
+export type BulkPullAction =
+  | { type: "will_pull"; branch: string; upstream: string; behind: number }
+  | { type: "already_up_to_date"; branch: string; upstream: string }
+  | { type: "skipped_dirty"; uncommitted_changes: boolean }
+  | { type: "skipped_no_upstream" }
+  | { type: "uninitialized" };
+
+export interface BulkPullPreviewItem {
+  path: string;
+  relative_path: string;
+  action: BulkPullAction;
+}
+
+export interface BulkPullPreview {
+  total: number;
+  will_pull: number;
+  already_up_to_date: number;
+  skipped_dirty: number;
+  skipped_no_upstream: number;
+  items: BulkPullPreviewItem[];
+}
+
+export interface BulkPullOptions {
+  strategy: PullStrategy;
+  paths?: string[] | null;
+}
+
+export type BulkResetAction =
+  | { type: "will_reset"; current_commit: string; gitlink_commit: string }
+  | { type: "already_in_sync"; gitlink_commit: string }
+  | { type: "skipped_dirty"; uncommitted_changes: boolean }
+  | { type: "missing_object"; gitlink_commit: string }
+  | { type: "no_gitlink_recorded" }
+  | { type: "uninitialized" };
+
+export interface BulkResetPreviewItem {
+  path: string;
+  relative_path: string;
+  action: BulkResetAction;
+}
+
+export interface BulkResetPreview {
+  total: number;
+  will_reset: number;
+  already_in_sync: number;
+  skipped_dirty: number;
+  missing_object: number;
+  items: BulkResetPreviewItem[];
+}
+
+export type BulkItemOutcome =
+  | { status: "success"; message: string }
+  | { status: "skipped"; reason: string }
+  | { status: "failed"; error: string }
+  | { status: "cancelled" };
+
+export interface BulkOperationItemResult {
+  path: string;
+  relative_path: string;
+  outcome: BulkItemOutcome;
+  updated_state?: SubmoduleState | null;
+}
+
+export interface BulkOperationResult {
+  total: number;
+  succeeded: number;
+  skipped: number;
+  failed: number;
+  items: BulkOperationItemResult[];
+}
+
+export type BumpGitlinkOutcome =
+  | {
+      status: "success";
+      submodule_path: string;
+      relative_path: string;
+      head_commit: string;
+      previous_gitlink?: string | null;
+      warning?: string | null;
+    }
+  | {
+      status: "unpushed_refused";
+      submodule_path: string;
+      relative_path: string;
+      head_commit: string;
+      reason: string;
+    }
+  | {
+      status: "failed";
+      submodule_path: string;
+      relative_path: string;
+      error: string;
+    };

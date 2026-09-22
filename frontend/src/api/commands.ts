@@ -48,9 +48,17 @@ import type {
   SettingsLoadResult,
   StageOutcome,
   StashApplyOutcome,
+  BulkCheckoutPreview,
+  BulkOperationResult,
+  BulkPullOptions,
+  BulkPullPreview,
+  BulkResetPreview,
+  BumpGitlinkOutcome,
   StashDetail,
   StashEntry,
   SubmoduleMatrixResult,
+  SubmoduleRefreshOptions,
+  SubmoduleRefreshResult,
   SubmoduleState,
   TagEntry,
   WorkingCopyStatus,
@@ -76,6 +84,102 @@ export function getSubmoduleMatrix(root: string): Promise<SubmoduleMatrixResult>
 
 export function getSingleSubmodule(root: string, submodulePath: string): Promise<SubmoduleState | null> {
   return invoke<SubmoduleState | null>("get_single_submodule", { root, submodulePath });
+}
+
+export function refreshSubmoduleNetwork(
+  root: string,
+  options: SubmoduleRefreshOptions
+): Promise<SubmoduleRefreshResult> {
+  return invoke<SubmoduleRefreshResult>("refresh_submodule_network", { root, options });
+}
+
+export function cancelSubmoduleNetworkRefresh(): Promise<void> {
+  return invoke<void>("cancel_submodule_network_refresh");
+}
+
+export function previewBulkCheckout(
+  root: string,
+  targetBranch: string,
+  submodulePaths?: string[] | null
+): Promise<BulkCheckoutPreview> {
+  return invoke<BulkCheckoutPreview>("preview_bulk_checkout_command", {
+    root,
+    targetBranch,
+    submodulePaths: submodulePaths ?? null,
+  });
+}
+
+export function executeBulkCheckout(
+  root: string,
+  targetBranch: string,
+  submodulePaths?: string[] | null
+): Promise<BulkOperationResult> {
+  return invoke<BulkOperationResult>("execute_bulk_checkout_command", {
+    root,
+    targetBranch,
+    submodulePaths: submodulePaths ?? null,
+  });
+}
+
+export function previewBulkPull(
+  root: string,
+  submodulePaths?: string[] | null
+): Promise<BulkPullPreview> {
+  return invoke<BulkPullPreview>("preview_bulk_pull_command", {
+    root,
+    submodulePaths: submodulePaths ?? null,
+  });
+}
+
+export function executeBulkPull(
+  root: string,
+  options: BulkPullOptions
+): Promise<BulkOperationResult> {
+  return invoke<BulkOperationResult>("execute_bulk_pull_command", { root, options });
+}
+
+export function previewBulkReset(
+  root: string,
+  submodulePaths?: string[] | null
+): Promise<BulkResetPreview> {
+  return invoke<BulkResetPreview>("preview_bulk_reset_command", {
+    root,
+    submodulePaths: submodulePaths ?? null,
+  });
+}
+
+export function executeBulkReset(
+  root: string,
+  submodulePaths?: string[] | null
+): Promise<BulkOperationResult> {
+  return invoke<BulkOperationResult>("execute_bulk_reset_command", {
+    root,
+    submodulePaths: submodulePaths ?? null,
+  });
+}
+
+export function bumpSubmoduleGitlink(
+  root: string,
+  submodulePath: string,
+  allowUnpushed: boolean
+): Promise<BumpGitlinkOutcome> {
+  return invoke<BumpGitlinkOutcome>("bump_submodule_gitlink_command", {
+    root,
+    submodulePath,
+    allowUnpushed,
+  });
+}
+
+export function bumpBulkGitlinks(
+  root: string,
+  submodulePaths?: string[] | null,
+  allowUnpushed = false
+): Promise<BumpGitlinkOutcome[]> {
+  return invoke<BumpGitlinkOutcome[]>("bump_bulk_gitlinks_command", {
+    root,
+    submodulePaths: submodulePaths ?? null,
+    allowUnpushed,
+  });
 }
 
 export function getWorkingCopyStatus(root: string): Promise<Resolved<WorkingCopyStatus>> {

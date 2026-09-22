@@ -767,9 +767,11 @@ export const App: Component = () => {
             </Show>
             <Show when={submodules() && (submodules()!.submodules.length > 0 || submodules()!.malformed_entries.length > 0)}>
               <SubmoduleMatrix
+                root={workspace.activeGroup()?.rootPath}
                 submodules={submodules()!.submodules}
                 malformedEntries={submodules()!.malformed_entries}
                 onDrillIn={drillIntoSubmodule}
+                onRefreshNeeded={() => refetchSubmodules()}
               />
             </Show>
             <Show when={submodules.loading}>

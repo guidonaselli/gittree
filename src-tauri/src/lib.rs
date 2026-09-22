@@ -11,22 +11,33 @@ use askpass::AskpassServer;
 use desktop_theme::DesktopPalette;
 use git_process::{check_git_version, ProcessLayer};
 use repo_state::{
-    amend, commit, commit_message_template, delete_untracked_paths, diff_file,
-    diff_file_with_options, diff_revisions, discard_tracked_paths, head_is_published, query_blame,
-    query_commit_detail, query_file_at_revision, query_history_count, query_history_graph,
-    query_history_page, query_repository_state, query_single_submodule, query_submodule_matrix,
-    query_working_copy_status_cancellable, read_blob_base64, read_working_tree_file_base64,
-    stage_hunks, stage_lines,
-    stash_paths, unstage_hunks, unstage_lines, unstage_paths, BlameLine, BlameOptions,
-    CommitDetail, CommitMessageTemplate, CommitOptions, CommitSummary,
-    DiffViewOptions, FileDiff, GraphResult, HistoricalFile, HistoryScope, HistorySearchOptions,
-    HistorySearchResult, IgnoreExplanation, IgnoreTarget, OpenOutcome, RepositoryState, Resolved,
-    SubmoduleMatrixResult, SubmoduleState, WorkingCopyStatus,
+    abort_operation, check_dirty_tree, continue_operation, query_active_operation,
+    query_conflicting_files, query_rebase_plan, skip_operation, start_cherry_pick,
+    start_interactive_rebase, start_merge, start_revert, AbortOutcome, ActiveOperationDetail,
+    CherryPickOptions, CherryPickOutcome, DirtyTreeDetails, MergeOptions, MergeOutcome,
+    OperationStepOutcome, RebaseOutcome, RebasePlanItem, RevertOptions, RevertOutcome,
 };
 use repo_state::{
     add_ignore_rule, check_ignore, checkout_branch, compare_branches, create_branch,
     create_tracking_branch, delete_branch, query_branches, rename_branch, stash_and_checkout,
     BranchComparison, BranchEntry, CheckoutOutcome, DeleteBranchOutcome,
+};
+use repo_state::{
+    amend, bump_bulk_gitlinks, bump_submodule_gitlink, commit, commit_message_template,
+    delete_untracked_paths, diff_file, diff_file_with_options, diff_revisions,
+    discard_tracked_paths, execute_bulk_checkout, execute_bulk_pull, execute_bulk_reset_to_gitlink,
+    head_is_published, preview_bulk_checkout, preview_bulk_pull, preview_bulk_reset_to_gitlink,
+    query_blame, query_commit_detail, query_file_at_revision, query_history_count,
+    query_history_graph, query_history_page, query_repository_state, query_single_submodule,
+    query_submodule_matrix, query_working_copy_status_cancellable, read_blob_base64,
+    read_working_tree_file_base64, refresh_submodules_network, stage_hunks, stage_lines,
+    stash_paths, unstage_hunks, unstage_lines, unstage_paths, BlameLine, BlameOptions,
+    BulkCheckoutPreview, BulkOperationResult, BulkPullOptions, BulkPullPreview, BulkResetPreview,
+    BumpGitlinkOutcome, CommitDetail, CommitMessageTemplate, CommitOptions, CommitSummary,
+    DiffViewOptions, FileDiff, GraphResult, HistoricalFile, HistoryScope, HistorySearchOptions,
+    HistorySearchResult, IgnoreExplanation, IgnoreTarget, OpenOutcome, RepositoryState, Resolved,
+    SubmoduleMatrixResult, SubmoduleRefreshOptions, SubmoduleRefreshProgress,
+    SubmoduleRefreshResult, SubmoduleState, WorkingCopyStatus,
 };
 use repo_state::{
     apply_stash, clear_stashes, create_stash, create_tag, delete_remote_tag, delete_tag,
@@ -35,21 +46,14 @@ use repo_state::{
     StashEntry, TagEntry,
 };
 use repo_state::{
-    abort_operation, check_dirty_tree, continue_operation, query_active_operation,
-    query_conflicting_files, query_rebase_plan, skip_operation, start_cherry_pick,
-    start_interactive_rebase, start_merge, start_revert, AbortOutcome, ActiveOperationDetail,
-    CherryPickOptions, CherryPickOutcome, DirtyTreeDetails, MergeOptions, MergeOutcome,
-    OperationStepOutcome, RebaseOutcome, RebasePlanItem, RevertOptions, RevertOutcome,
-};
-use repo_state::{
     check_file_conflict_markers, launch_mergetool as repo_launch_mergetool,
     query_conflicts as repo_query_conflicts, query_mergetool_config as repo_query_mergetool_config,
     resolve_conflict as repo_resolve_conflict, stage_paths_with_guard, ConflictItem,
     ConflictMarkerInfo, ConflictResolution, MergetoolConfig, MergetoolOutcome, StageOutcome,
 };
 use repo_state::{
-    fetch as repo_fetch, pull as repo_pull, push as repo_push,
-    query_reflog, query_remotes as repo_query_remotes, reset_to_reflog_entry, FetchOptions,
+    fetch as repo_fetch, pull as repo_pull, push as repo_push, query_reflog,
+    query_remotes as repo_query_remotes, reset_to_reflog_entry, FetchOptions,
     MultiRemoteFetchResult, PullOptions, PullOutcome, PushOptions, PushOutcome, ReflogEntry,
     RemoteInfo, ResetOutcome, ResetReflogOptions,
 };
@@ -74,6 +78,9 @@ pub struct WorkingCopyScanState(pub Mutex<Option<CancellationToken>>);
 
 #[derive(Default)]
 pub struct SyncNetworkState(pub Mutex<Option<CancellationToken>>);
+
+#[derive(Default)]
+pub struct SubmoduleNetworkState(pub Mutex<Option<CancellationToken>>);
 
 /// Runs before the Tauri builder so a failed version check never produces
 /// a half-initialized window.
@@ -117,6 +124,177 @@ async fn get_single_submodule(
     let root = PathBuf::from(root);
     let sub_path = PathBuf::from(submodule_path);
     Ok(query_single_submodule(&state.process_layer, &root, &sub_path).await)
+}
+
+#[tauri::command]
+async fn refresh_submodule_network(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    submodule_state: State<'_, SubmoduleNetworkState>,
+    root: String,
+    options: SubmoduleRefreshOptions,
+) -> Result<SubmoduleRefreshResult, String> {
+    let root = PathBuf::from(root);
+    let cancel = CancellationToken::new();
+    {
+        let mut guard = submodule_state
+            .0
+            .lock()
+            .expect("submodule state mutex poisoned");
+        if let Some(old) = guard.replace(cancel.clone()) {
+            old.cancel();
+        }
+    }
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<SubmoduleRefreshProgress>();
+    let app_handle = app.clone();
+    tokio::spawn(async move {
+        while let Some(prog) = rx.recv().await {
+            use tauri::Emitter;
+            let _ = app_handle.emit("submodule:refresh-progress", prog);
+        }
+    });
+
+    let res =
+        refresh_submodules_network(&state.process_layer, &root, options, Some(tx), cancel).await;
+
+    {
+        let mut guard = submodule_state
+            .0
+            .lock()
+            .expect("submodule state mutex poisoned");
+        *guard = None;
+    }
+
+    Ok(res)
+}
+
+#[tauri::command]
+async fn cancel_submodule_network_refresh(
+    submodule_state: State<'_, SubmoduleNetworkState>,
+) -> Result<(), String> {
+    let mut guard = submodule_state
+        .0
+        .lock()
+        .expect("submodule state mutex poisoned");
+    if let Some(token) = guard.take() {
+        token.cancel();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn preview_bulk_checkout_command(
+    state: State<'_, AppState>,
+    root: String,
+    target_branch: String,
+    submodule_paths: Option<Vec<String>>,
+) -> Result<BulkCheckoutPreview, String> {
+    let root = PathBuf::from(root);
+    let paths = submodule_paths.map(|v| v.into_iter().map(PathBuf::from).collect());
+    Ok(preview_bulk_checkout(&state.process_layer, &root, &target_branch, paths).await)
+}
+
+#[tauri::command]
+async fn execute_bulk_checkout_command(
+    state: State<'_, AppState>,
+    root: String,
+    target_branch: String,
+    submodule_paths: Option<Vec<String>>,
+) -> Result<BulkOperationResult, String> {
+    let root = PathBuf::from(root);
+    let paths = submodule_paths.map(|v| v.into_iter().map(PathBuf::from).collect());
+    Ok(execute_bulk_checkout(
+        &state.process_layer,
+        &root,
+        &target_branch,
+        paths,
+        CancellationToken::new(),
+    )
+    .await)
+}
+
+#[tauri::command]
+async fn preview_bulk_pull_command(
+    state: State<'_, AppState>,
+    root: String,
+    submodule_paths: Option<Vec<String>>,
+) -> Result<BulkPullPreview, String> {
+    let root = PathBuf::from(root);
+    let paths = submodule_paths.map(|v| v.into_iter().map(PathBuf::from).collect());
+    Ok(preview_bulk_pull(&state.process_layer, &root, paths).await)
+}
+
+#[tauri::command]
+async fn execute_bulk_pull_command(
+    state: State<'_, AppState>,
+    root: String,
+    options: BulkPullOptions,
+) -> Result<BulkOperationResult, String> {
+    let root = PathBuf::from(root);
+    Ok(execute_bulk_pull(
+        &state.process_layer,
+        &root,
+        options,
+        CancellationToken::new(),
+    )
+    .await)
+}
+
+#[tauri::command]
+async fn preview_bulk_reset_command(
+    state: State<'_, AppState>,
+    root: String,
+    submodule_paths: Option<Vec<String>>,
+) -> Result<BulkResetPreview, String> {
+    let root = PathBuf::from(root);
+    let paths = submodule_paths.map(|v| v.into_iter().map(PathBuf::from).collect());
+    Ok(preview_bulk_reset_to_gitlink(&state.process_layer, &root, paths).await)
+}
+
+#[tauri::command]
+async fn execute_bulk_reset_command(
+    state: State<'_, AppState>,
+    root: String,
+    submodule_paths: Option<Vec<String>>,
+) -> Result<BulkOperationResult, String> {
+    let root = PathBuf::from(root);
+    let paths = submodule_paths.map(|v| v.into_iter().map(PathBuf::from).collect());
+    Ok(
+        execute_bulk_reset_to_gitlink(&state.process_layer, &root, paths, CancellationToken::new())
+            .await,
+    )
+}
+
+#[tauri::command]
+async fn bump_submodule_gitlink_command(
+    state: State<'_, AppState>,
+    root: String,
+    submodule_path: String,
+    allow_unpushed: bool,
+) -> Result<BumpGitlinkOutcome, String> {
+    let root = PathBuf::from(root);
+    let sub = PathBuf::from(submodule_path);
+    Ok(bump_submodule_gitlink(&state.process_layer, &root, &sub, allow_unpushed).await)
+}
+
+#[tauri::command]
+async fn bump_bulk_gitlinks_command(
+    state: State<'_, AppState>,
+    root: String,
+    submodule_paths: Option<Vec<String>>,
+    allow_unpushed: bool,
+) -> Result<Vec<BumpGitlinkOutcome>, String> {
+    let root = PathBuf::from(root);
+    let paths = submodule_paths.map(|v| v.into_iter().map(PathBuf::from).collect());
+    Ok(bump_bulk_gitlinks(
+        &state.process_layer,
+        &root,
+        paths,
+        allow_unpushed,
+        CancellationToken::new(),
+    )
+    .await)
 }
 
 #[tauri::command]
@@ -207,6 +385,7 @@ async fn get_file_diff_with_options(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn get_revision_diff(
     state: State<'_, AppState>,
     root: String,
@@ -258,13 +437,7 @@ async fn search_history(
         }
         *guard = Some(token.clone());
     }
-    repo_state::search_history(
-        &state.process_layer,
-        &PathBuf::from(root),
-        &options,
-        token,
-    )
-    .await
+    repo_state::search_history(&state.process_layer, &PathBuf::from(root), &options, token).await
 }
 
 #[tauri::command]
@@ -657,7 +830,14 @@ async fn create_branch_command(
     checkout: bool,
 ) -> Result<(), String> {
     let root = PathBuf::from(root);
-    create_branch(&state.process_layer, &root, &name, start_point.as_deref(), checkout).await
+    create_branch(
+        &state.process_layer,
+        &root,
+        &name,
+        start_point.as_deref(),
+        checkout,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -728,10 +908,7 @@ async fn compare_branches_command(
 
 // Tags
 #[tauri::command]
-async fn get_tags(
-    state: State<'_, AppState>,
-    root: String,
-) -> Result<Vec<TagEntry>, String> {
+async fn get_tags(state: State<'_, AppState>, root: String) -> Result<Vec<TagEntry>, String> {
     let root = PathBuf::from(root);
     query_tags(&state.process_layer, &root).await
 }
@@ -789,10 +966,7 @@ async fn get_remote_tags(
 
 // Stashes
 #[tauri::command]
-async fn get_stashes(
-    state: State<'_, AppState>,
-    root: String,
-) -> Result<Vec<StashEntry>, String> {
+async fn get_stashes(state: State<'_, AppState>, root: String) -> Result<Vec<StashEntry>, String> {
     let root = PathBuf::from(root);
     query_stashes(&state.process_layer, &root).await
 }
@@ -850,10 +1024,7 @@ async fn drop_stash_command(
 }
 
 #[tauri::command]
-async fn clear_stashes_command(
-    state: State<'_, AppState>,
-    root: String,
-) -> Result<(), String> {
+async fn clear_stashes_command(state: State<'_, AppState>, root: String) -> Result<(), String> {
     let root = PathBuf::from(root);
     clear_stashes(&state.process_layer, &root).await
 }
@@ -1017,10 +1188,7 @@ async fn get_mergetool_config(
 }
 
 #[tauri::command]
-async fn get_remotes(
-    state: State<'_, AppState>,
-    root: String,
-) -> Result<Vec<RemoteInfo>, String> {
+async fn get_remotes(state: State<'_, AppState>, root: String) -> Result<Vec<RemoteInfo>, String> {
     let root = PathBuf::from(root);
     repo_query_remotes(&state.process_layer, &root).await
 }
@@ -1177,10 +1345,21 @@ pub fn run() {
         .manage(SearchState::default())
         .manage(WorkingCopyScanState::default())
         .manage(SyncNetworkState::default())
+        .manage(SubmoduleNetworkState::default())
         .invoke_handler(tauri::generate_handler![
             get_repository_state,
             get_submodule_matrix,
             get_single_submodule,
+            refresh_submodule_network,
+            cancel_submodule_network_refresh,
+            preview_bulk_checkout_command,
+            execute_bulk_checkout_command,
+            preview_bulk_pull_command,
+            execute_bulk_pull_command,
+            preview_bulk_reset_command,
+            execute_bulk_reset_command,
+            bump_submodule_gitlink_command,
+            bump_bulk_gitlinks_command,
             get_working_copy_status,
             cancel_working_copy_status,
             stage_working_copy_paths,

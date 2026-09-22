@@ -1,7 +1,7 @@
-use std::path::PathBuf;
 use repo_state::fixtures::{
     generate_dirty_tree, generate_large_history, generate_submodule_superproject,
 };
+use std::path::PathBuf;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -19,7 +19,10 @@ fn main() {
     match kind.as_str() {
         "superproject" => {
             let count: usize = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(25);
-            println!("Generating {count}-submodule superproject at {}...", path.display());
+            println!(
+                "Generating {count}-submodule superproject at {}...",
+                path.display()
+            );
             if let Err(err) = generate_submodule_superproject(&path, count) {
                 eprintln!("Error: {err}");
                 std::process::exit(1);
@@ -28,7 +31,10 @@ fn main() {
         "history" => {
             let commits: usize = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(100_000);
             let branches: usize = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(6);
-            println!("Generating {commits} commits across {branches} branches at {}...", path.display());
+            println!(
+                "Generating {commits} commits across {branches} branches at {}...",
+                path.display()
+            );
             if let Err(err) = generate_large_history(&path, commits, branches) {
                 eprintln!("Error: {err}");
                 std::process::exit(1);
@@ -36,7 +42,10 @@ fn main() {
         }
         "dirty-tree" => {
             let files: usize = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(10_000);
-            println!("Generating {files}-file dirty tree at {}...", path.display());
+            println!(
+                "Generating {files}-file dirty tree at {}...",
+                path.display()
+            );
             if let Err(err) = generate_dirty_tree(&path, files) {
                 eprintln!("Error: {err}");
                 std::process::exit(1);

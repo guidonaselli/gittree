@@ -39,7 +39,12 @@ pub async fn query_tags(layer: &ProcessLayer, root: &Path) -> Result<Vec<TagEntr
         .run(
             GitCall::new(
                 root,
-                ["for-each-ref", &format!("--format={fmt}"), "--sort=-creatordate", "refs/tags"],
+                [
+                    "for-each-ref",
+                    &format!("--format={fmt}"),
+                    "--sort=-creatordate",
+                    "refs/tags",
+                ],
             ),
             Intent::Read,
             CancellationToken::new(),
@@ -159,10 +164,7 @@ pub async fn create_tag(
     // Validate ref format
     let check = layer
         .run(
-            GitCall::new(
-                root,
-                ["check-ref-format", &format!("refs/tags/{name}")],
-            ),
+            GitCall::new(root, ["check-ref-format", &format!("refs/tags/{name}")]),
             Intent::Read,
             CancellationToken::new(),
         )
@@ -191,7 +193,11 @@ pub async fn create_tag(
     }
 
     let res = layer
-        .run(GitCall::new(root, args), Intent::Write, CancellationToken::new())
+        .run(
+            GitCall::new(root, args),
+            Intent::Write,
+            CancellationToken::new(),
+        )
         .await
         .map_err(|e| format!("Process error creating tag: {e}"))?;
 
@@ -235,7 +241,11 @@ pub async fn push_tag(
     args.push(format!("refs/tags/{}", opts.name));
 
     let res = layer
-        .run(GitCall::new(root, args), Intent::Write, CancellationToken::new())
+        .run(
+            GitCall::new(root, args),
+            Intent::Write,
+            CancellationToken::new(),
+        )
         .await
         .map_err(|e| format!("Process error pushing tag: {e}"))?;
 
@@ -265,7 +275,10 @@ pub async fn delete_remote_tag(
         .map_err(|e| format!("Process error deleting remote tag: {e}"))?;
 
     if !res.ok() {
-        return Err(format!("git push --delete tag failed: {}", res.stderr.trim()));
+        return Err(format!(
+            "git push --delete tag failed: {}",
+            res.stderr.trim()
+        ));
     }
 
     Ok(())
@@ -330,7 +343,12 @@ mod tests {
         git(dir.path(), &["config", "user.email", "tester@example.com"]);
         git(
             dir.path(),
-            &["commit", "--allow-empty", "-m", "Initial commit for tagging"],
+            &[
+                "commit",
+                "--allow-empty",
+                "-m",
+                "Initial commit for tagging",
+            ],
         );
 
         let layer = ProcessLayer::new(10, Duration::from_secs(30));
@@ -351,7 +369,10 @@ mod tests {
 
         assert_eq!(t1.name, "v0.1.0");
         assert!(!t1.is_annotated);
-        assert_eq!(t1.commit_subject.as_deref(), Some("Initial commit for tagging"));
+        assert_eq!(
+            t1.commit_subject.as_deref(),
+            Some("Initial commit for tagging")
+        );
 
         // 2. Create annotated tag
         let t2 = create_tag(
@@ -404,8 +425,18 @@ mod tests {
         let remote_path = td.path().join("remote.git");
         let local_path = td.path().join("local");
 
-        git(td.path(), &["init", "--bare", remote_path.to_str().unwrap()]);
-        git(td.path(), &["clone", remote_path.to_str().unwrap(), local_path.to_str().unwrap()]);
+        git(
+            td.path(),
+            &["init", "--bare", remote_path.to_str().unwrap()],
+        );
+        git(
+            td.path(),
+            &[
+                "clone",
+                remote_path.to_str().unwrap(),
+                local_path.to_str().unwrap(),
+            ],
+        );
 
         git(&local_path, &["config", "user.name", "Tester"]);
         git(&local_path, &["config", "user.email", "tester@example.com"]);
@@ -442,7 +473,9 @@ mod tests {
         .unwrap();
 
         // Query remote tags
-        let remotes = query_remote_tags(&layer, &local_path, "origin").await.unwrap();
+        let remotes = query_remote_tags(&layer, &local_path, "origin")
+            .await
+            .unwrap();
         assert_eq!(remotes, vec!["v1.0.0".to_string()]);
 
         // Delete remote tag
@@ -450,7 +483,9 @@ mod tests {
             .await
             .unwrap();
 
-        let remotes_after = query_remote_tags(&layer, &local_path, "origin").await.unwrap();
+        let remotes_after = query_remote_tags(&layer, &local_path, "origin")
+            .await
+            .unwrap();
         assert!(remotes_after.is_empty());
     }
 }

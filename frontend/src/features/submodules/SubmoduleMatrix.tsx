@@ -1,13 +1,38 @@
-import { type Component, For, Show, createMemo, createSignal } from "solid-js";
+import {
+  type Component,
+  For,
+  Show,
+  createMemo,
+  createSignal,
+  onCleanup,
+  onMount,
+} from "solid-js";
+import { listen } from "@tauri-apps/api/event";
 import {
   branchLabel,
   gitlinkDivergenceLabel,
   isKnown,
   unknownReason,
   upstreamBasisLabel,
+  type BulkCheckoutPreview,
+  type BulkOperationResult,
+  type BulkPullPreview,
+  type BulkResetPreview,
   type MalformedGitmodulesEntry,
+  type SubmoduleRefreshProgress,
   type SubmoduleState,
 } from "../../api/types";
+import {
+  bumpBulkGitlinks,
+  cancelSubmoduleNetworkRefresh,
+  executeBulkCheckout,
+  executeBulkPull,
+  executeBulkReset,
+  previewBulkCheckout,
+  previewBulkPull,
+  previewBulkReset,
+  refreshSubmoduleNetwork,
+} from "../../api/commands";
 import {
   type SortKey,
   type SortDirection,
@@ -38,11 +63,13 @@ export {
 };
 
 export const SubmoduleMatrix: Component<{
+  root?: string;
   submodules: SubmoduleState[];
   malformedEntries?: MalformedGitmodulesEntry[];
   selectedPaths?: Set<string>;
   onSelectionChange?: (selected: Set<string>) => void;
   onDrillIn: (path: string, name: string) => void;
+  onRefreshNeeded?: () => void;
 }> = (props) => {
   const [filter, setFilter] = createSignal<StateFilter>("all");
   const [searchQuery, setSearchQuery] = createSignal("");
@@ -70,6 +97,213 @@ export const SubmoduleMatrix: Component<{
       setSortDirection("asc");
     }
   };
+
+  const [isRefreshing, setIsRefreshing] = createSignal(false);
+  const [refreshProgressText, setRefreshProgressText] = createSignal("");
+  const [activeBulkAction, setActiveBulkAction] = createSignal<
+    "checkout" | "pull" | "reset" | "bump" | null
+  >(null);
+  const [targetBranch, setTargetBranch] = createSignal("");
+  const [checkoutPreview, setCheckoutPreview] = createSignal<BulkCheckoutPreview | null>(null);
+  const [pullPreview, setPullPreview] = createSignal<BulkPullPreview | null>(null);
+  const [resetPreview, setResetPreview] = createSignal<BulkResetPreview | null>(null);
+  const [bulkLoading, setBulkLoading] = createSignal(false);
+  const [bulkOutcome, setBulkOutcome] = createSignal<BulkOperationResult | null>(null);
+  const [gitlinkBumpWarning, setGitlinkBumpWarning] = createSignal<string | null>(null);
+  const [allowUnpushedBump, setAllowUnpushedBump] = createSignal(false);
+
+  onMount(() => {
+    let unlisten: (() => void) | undefined;
+    listen<SubmoduleRefreshProgress>("submodule:refresh-progress", (evt) => {
+      const payload = evt.payload;
+      const stage = payload.stage;
+      if (stage.stage === "fetching") {
+        setRefreshProgressText(`Fetching ${payload.relative_path} (${stage.remote})…`);
+      } else if (stage.stage === "failed") {
+        setRefreshProgressText(`Failed ${payload.relative_path}: ${stage.error}`);
+      } else if (stage.stage === "skipped") {
+        setRefreshProgressText(`Skipped ${payload.relative_path}: ${stage.reason}`);
+      }
+    }).then((fn) => {
+      unlisten = fn;
+    });
+
+    onCleanup(() => {
+      if (unlisten) unlisten();
+    });
+  });
+
+  async function handleRefreshNetwork() {
+    if (!props.root || isRefreshing()) return;
+    setIsRefreshing(true);
+    setRefreshProgressText("Starting network refresh…");
+    try {
+      const res = await refreshSubmoduleNetwork(props.root, {
+        concurrency: 8,
+        prune: true,
+      });
+      setRefreshProgressText(
+        `Done: ${res.succeeded} updated, ${res.skipped} skipped, ${res.failed} failed`
+      );
+      props.onRefreshNeeded?.();
+    } catch (e) {
+      setRefreshProgressText(`Refresh failed: ${e}`);
+    } finally {
+      setTimeout(() => {
+        setIsRefreshing(false);
+      }, 2500);
+    }
+  }
+
+  async function handleCancelRefresh() {
+    try {
+      await cancelSubmoduleNetworkRefresh();
+    } catch {}
+  }
+
+  function openBulkCheckout() {
+    setActiveBulkAction("checkout");
+    setTargetBranch("");
+    setCheckoutPreview(null);
+  }
+
+  async function handlePreviewCheckout() {
+    if (!props.root || !targetBranch().trim()) return;
+    setBulkLoading(true);
+    try {
+      const paths = Array.from(selected());
+      const prev = await previewBulkCheckout(props.root, targetBranch().trim(), paths);
+      setCheckoutPreview(prev);
+    } catch (e) {
+      alert(`Preview failed: ${e}`);
+    } finally {
+      setBulkLoading(false);
+    }
+  }
+
+  async function handleExecuteCheckout() {
+    if (!props.root || !targetBranch().trim()) return;
+    setBulkLoading(true);
+    try {
+      const paths = Array.from(selected());
+      const res = await executeBulkCheckout(props.root, targetBranch().trim(), paths);
+      setBulkOutcome(res);
+      setActiveBulkAction(null);
+      props.onRefreshNeeded?.();
+    } catch (e) {
+      alert(`Checkout failed: ${e}`);
+    } finally {
+      setBulkLoading(false);
+    }
+  }
+
+  async function openBulkPull() {
+    if (!props.root) return;
+    setActiveBulkAction("pull");
+    setBulkLoading(true);
+    try {
+      const paths = Array.from(selected());
+      const prev = await previewBulkPull(props.root, paths);
+      setPullPreview(prev);
+    } catch (e) {
+      alert(`Pull preview failed: ${e}`);
+    } finally {
+      setBulkLoading(false);
+    }
+  }
+
+  async function handleExecutePull() {
+    if (!props.root) return;
+    setBulkLoading(true);
+    try {
+      const paths = Array.from(selected());
+      const res = await executeBulkPull(props.root, { strategy: "merge", paths });
+      setBulkOutcome(res);
+      setActiveBulkAction(null);
+      props.onRefreshNeeded?.();
+    } catch (e) {
+      alert(`Pull failed: ${e}`);
+    } finally {
+      setBulkLoading(false);
+    }
+  }
+
+  async function openBulkReset() {
+    if (!props.root) return;
+    setActiveBulkAction("reset");
+    setBulkLoading(true);
+    try {
+      const paths = Array.from(selected());
+      const prev = await previewBulkReset(props.root, paths);
+      setResetPreview(prev);
+    } catch (e) {
+      alert(`Reset preview failed: ${e}`);
+    } finally {
+      setBulkLoading(false);
+    }
+  }
+
+  async function handleExecuteReset() {
+    if (!props.root) return;
+    setBulkLoading(true);
+    try {
+      const paths = Array.from(selected());
+      const res = await executeBulkReset(props.root, paths);
+      setBulkOutcome(res);
+      setActiveBulkAction(null);
+      props.onRefreshNeeded?.();
+    } catch (e) {
+      alert(`Reset failed: ${e}`);
+    } finally {
+      setBulkLoading(false);
+    }
+  }
+
+  async function handleBumpGitlinks() {
+    if (!props.root) return;
+    setBulkLoading(true);
+    try {
+      const paths = Array.from(selected());
+      const outcomes = await bumpBulkGitlinks(props.root, paths, allowUnpushedBump());
+      const unpushed = outcomes.find((o) => o.status === "unpushed_refused");
+      if (unpushed && unpushed.status === "unpushed_refused") {
+        setGitlinkBumpWarning(unpushed.reason);
+        setActiveBulkAction("bump");
+        return;
+      }
+      const succeeded = outcomes.filter((o) => o.status === "success").length;
+      const failed = outcomes.filter((o) => o.status === "failed").length;
+      setBulkOutcome({
+        total: outcomes.length,
+        succeeded,
+        skipped: 0,
+        failed,
+        items: outcomes.map((o) => ({
+          path: o.submodule_path,
+          relative_path: o.relative_path,
+          outcome:
+            o.status === "success"
+              ? {
+                  status: "success",
+                  message: `Bumped to ${o.head_commit}${
+                    o.warning ? ` (${o.warning})` : ""
+                  }`,
+                }
+              : {
+                  status: "failed",
+                  error: o.status === "failed" ? o.error : "refused",
+                },
+        })),
+      });
+      setActiveBulkAction(null);
+      setGitlinkBumpWarning(null);
+      props.onRefreshNeeded?.();
+    } catch (e) {
+      alert(`Bump gitlinks failed: ${e}`);
+    } finally {
+      setBulkLoading(false);
+    }
+  }
 
   const filtered = createMemo(() => {
     const f = filter();
@@ -495,6 +729,33 @@ export const SubmoduleMatrix: Component<{
             />
             Group by branch
           </label>
+
+          <div class="matrix-refresh-controls">
+            <Show when={isRefreshing()}>
+              <span class="matrix-refresh-status" role="status">
+                <span class="matrix-spinner" aria-hidden="true">⟳</span>
+                <span>{refreshProgressText()}</span>
+              </span>
+              <button
+                type="button"
+                class="btn-matrix-action"
+                onClick={handleCancelRefresh}
+                title="Cancel network refresh"
+              >
+                Cancel
+              </button>
+            </Show>
+            <Show when={!isRefreshing()}>
+              <button
+                type="button"
+                class="btn-matrix-action"
+                onClick={handleRefreshNetwork}
+                title="Fetch all submodules in parallel"
+              >
+                <span>⟳</span> Refresh Network
+              </button>
+            </Show>
+          </div>
         </div>
       </div>
 
@@ -504,6 +765,38 @@ export const SubmoduleMatrix: Component<{
             <strong>{selected().size}</strong> submodule{selected().size === 1 ? "" : "s"} selected
           </span>
           <div class="selection-actions">
+            <button
+              type="button"
+              class="btn-matrix-action"
+              classList={{ "btn-matrix-action-primary": activeBulkAction() === "checkout" }}
+              onClick={openBulkCheckout}
+            >
+              Checkout…
+            </button>
+            <button
+              type="button"
+              class="btn-matrix-action"
+              classList={{ "btn-matrix-action-primary": activeBulkAction() === "pull" }}
+              onClick={openBulkPull}
+            >
+              Pull
+            </button>
+            <button
+              type="button"
+              class="btn-matrix-action"
+              classList={{ "btn-matrix-action-primary": activeBulkAction() === "reset" }}
+              onClick={openBulkReset}
+            >
+              Reset to Gitlink
+            </button>
+            <button
+              type="button"
+              class="btn-matrix-action"
+              classList={{ "btn-matrix-action-primary": activeBulkAction() === "bump" }}
+              onClick={handleBumpGitlinks}
+            >
+              Bump Gitlink
+            </button>
             <button type="button" class="btn-action-text" onClick={selectAllDisplayed}>
               Select all displayed ({sorted().length})
             </button>
@@ -512,6 +805,197 @@ export const SubmoduleMatrix: Component<{
             </button>
           </div>
         </div>
+
+        <Show when={activeBulkAction() === "checkout"}>
+          <div class="bulk-action-panel" role="region" aria-label="Bulk checkout">
+            <div class="bulk-action-row">
+              <strong>Bulk Branch Checkout:</strong>
+              <input
+                type="text"
+                class="matrix-text-input"
+                placeholder="Target branch name…"
+                value={targetBranch()}
+                onInput={(e) => setTargetBranch(e.currentTarget.value)}
+                onKeyDown={(e) => e.key === "Enter" && handlePreviewCheckout()}
+              />
+              <button
+                type="button"
+                class="btn-matrix-action"
+                onClick={handlePreviewCheckout}
+                disabled={!targetBranch().trim() || bulkLoading()}
+              >
+                Preview
+              </button>
+              <button
+                type="button"
+                class="btn-matrix-action btn-matrix-action-primary"
+                onClick={handleExecuteCheckout}
+                disabled={!checkoutPreview() || checkoutPreview()!.will_switch === 0 || bulkLoading()}
+              >
+                {bulkLoading() ? "Switching…" : `Switch ${checkoutPreview()?.will_switch ?? 0} Submodule(s)`}
+              </button>
+              <button
+                type="button"
+                class="btn-action-text"
+                onClick={() => setActiveBulkAction(null)}
+              >
+                Close
+              </button>
+            </div>
+            <Show when={checkoutPreview()}>
+              {(prev) => (
+                <div class="bulk-preview-badges">
+                  <span class="badge">Will switch: {prev().will_switch}</span>
+                  <span class="badge">Already on branch: {prev().already_on_branch}</span>
+                  <span class="badge badge-warning">Skipped dirty: {prev().skipped_dirty}</span>
+                  <span class="badge">Missing branch: {prev().missing_branch}</span>
+                </div>
+              )}
+            </Show>
+          </div>
+        </Show>
+
+        <Show when={activeBulkAction() === "pull"}>
+          <div class="bulk-action-panel" role="region" aria-label="Bulk pull">
+            <div class="bulk-action-row">
+              <strong>Bulk Pull from Upstream:</strong>
+              <Show when={pullPreview()}>
+                {(prev) => (
+                  <div class="bulk-preview-badges">
+                    <span class="badge">Will pull: {prev().will_pull}</span>
+                    <span class="badge">Already up to date: {prev().already_up_to_date}</span>
+                    <span class="badge badge-warning">Skipped dirty: {prev().skipped_dirty}</span>
+                    <span class="badge">No upstream: {prev().skipped_no_upstream}</span>
+                  </div>
+                )}
+              </Show>
+              <button
+                type="button"
+                class="btn-matrix-action btn-matrix-action-primary"
+                onClick={handleExecutePull}
+                disabled={bulkLoading() || (pullPreview() !== null && pullPreview()!.will_pull === 0)}
+              >
+                {bulkLoading() ? "Pulling…" : `Confirm Pull (${pullPreview()?.will_pull ?? 0})`}
+              </button>
+              <button
+                type="button"
+                class="btn-action-text"
+                onClick={() => setActiveBulkAction(null)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </Show>
+
+        <Show when={activeBulkAction() === "reset"}>
+          <div class="bulk-action-panel" role="region" aria-label="Bulk reset to gitlink">
+            <div class="bulk-action-row">
+              <strong>Bulk Reset to Superproject Gitlink:</strong>
+              <Show when={resetPreview()}>
+                {(prev) => (
+                  <div class="bulk-preview-badges">
+                    <span class="badge">Will reset: {prev().will_reset}</span>
+                    <span class="badge">Already in sync: {prev().already_in_sync}</span>
+                    <span class="badge badge-warning">Skipped dirty: {prev().skipped_dirty}</span>
+                  </div>
+                )}
+              </Show>
+              <button
+                type="button"
+                class="btn-matrix-action btn-matrix-action-primary"
+                onClick={handleExecuteReset}
+                disabled={bulkLoading() || (resetPreview() !== null && resetPreview()!.will_reset === 0)}
+              >
+                {bulkLoading() ? "Resetting…" : `Confirm Reset (${resetPreview()?.will_reset ?? 0})`}
+              </button>
+              <button
+                type="button"
+                class="btn-action-text"
+                onClick={() => setActiveBulkAction(null)}
+              >
+                Close
+              </button>
+            </div>
+            <Show when={resetPreview() && resetPreview()!.skipped_dirty > 0}>
+              <small class="text-muted">
+                Note: {resetPreview()!.skipped_dirty} dirty submodule(s) will be refused to protect uncommitted changes.
+              </small>
+            </Show>
+          </div>
+        </Show>
+
+        <Show when={activeBulkAction() === "bump" && gitlinkBumpWarning()}>
+          <div class="bulk-action-panel matrix-malformed-alert" role="alert">
+            <div class="bulk-action-row">
+              <strong>Unpushed Commit Warning:</strong>
+              <span>{gitlinkBumpWarning()}</span>
+              <label class="group-toggle-label">
+                <input
+                  type="checkbox"
+                  checked={allowUnpushedBump()}
+                  onChange={(e) => setAllowUnpushedBump(e.currentTarget.checked)}
+                />
+                Allow bumping unpushed commit
+              </label>
+              <button
+                type="button"
+                class="btn-matrix-action btn-matrix-action-primary"
+                disabled={!allowUnpushedBump() || bulkLoading()}
+                onClick={handleBumpGitlinks}
+              >
+                Confirm Bump
+              </button>
+              <button
+                type="button"
+                class="btn-action-text"
+                onClick={() => {
+                  setActiveBulkAction(null);
+                  setGitlinkBumpWarning(null);
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </Show>
+      </Show>
+
+      <Show when={bulkOutcome()}>
+        {(outcome) => (
+          <div class="matrix-outcome-banner" role="region" aria-label="Bulk operation results">
+            <div class="matrix-outcome-banner-header">
+              <span>
+                Operation Results: <strong>{outcome().succeeded}</strong> succeeded,{" "}
+                <strong>{outcome().skipped}</strong> skipped,{" "}
+                <strong>{outcome().failed}</strong> failed (out of {outcome().total})
+              </span>
+              <button
+                type="button"
+                class="btn-action-text"
+                onClick={() => setBulkOutcome(null)}
+              >
+                Dismiss
+              </button>
+            </div>
+            <Show when={outcome().skipped > 0 || outcome().failed > 0}>
+              <ul class="matrix-outcome-details">
+                <For each={outcome().items.filter((i) => i.outcome.status !== "success")}>
+                  {(item) => (
+                    <li>
+                      <strong>{item.relative_path}:</strong>{" "}
+                      {item.outcome.status === "skipped"
+                        ? `Skipped (${item.outcome.reason})`
+                        : item.outcome.status === "failed"
+                        ? `Failed (${item.outcome.error})`
+                        : "Cancelled"}
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </Show>
+          </div>
+        )}
       </Show>
 
       <Show when={props.malformedEntries && props.malformedEntries.length > 0}>

@@ -1,6 +1,6 @@
-use std::path::Path;
 use git_process::{GitCall, Intent, ProcessLayer};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 use tokio_util::sync::CancellationToken;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -115,7 +115,10 @@ pub async fn query_reflog(
             || res.stderr.contains("fatal: ambiguous argument")
             || res.stderr.contains("does not exist")
         {
-            return Err(format!("Reference '{}' does not exist in repository", target));
+            return Err(format!(
+                "Reference '{}' does not exist in repository",
+                target
+            ));
         }
         return Ok(Vec::new());
     }
@@ -282,7 +285,10 @@ pub async fn reset_to_reflog_entry(
             .map_err(|e| e.to_string())?;
 
         if !update_res.ok() {
-            return Err(format!("Failed to update branch ref: {}", update_res.stderr.trim()));
+            return Err(format!(
+                "Failed to update branch ref: {}",
+                update_res.stderr.trim()
+            ));
         }
     }
 
@@ -358,7 +364,9 @@ mod tests {
             .await
             .unwrap();
 
-        fs::write(path.join("file.txt"), "Second edit\n").await.unwrap();
+        fs::write(path.join("file.txt"), "Second edit\n")
+            .await
+            .unwrap();
         layer
             .run(
                 GitCall::new(path, vec!["add", "file.txt"]),
@@ -383,7 +391,9 @@ mod tests {
     async fn test_query_reflog_head() {
         let layer = ProcessLayer::new(4, Duration::from_secs(5));
         let repo = create_test_repo(&layer).await;
-        let entries = query_reflog(&layer, repo.path(), Some("HEAD"), Some(10)).await.unwrap();
+        let entries = query_reflog(&layer, repo.path(), Some("HEAD"), Some(10))
+            .await
+            .unwrap();
 
         assert!(entries.len() >= 2);
         assert_eq!(entries[0].index, 0);
@@ -406,7 +416,9 @@ mod tests {
             )
             .await
             .unwrap();
-        fs::write(repo.path().join("feature.txt"), "Feature content\n").await.unwrap();
+        fs::write(repo.path().join("feature.txt"), "Feature content\n")
+            .await
+            .unwrap();
         layer
             .run(
                 GitCall::new(repo.path(), vec!["add", "feature.txt"]),
@@ -424,7 +436,9 @@ mod tests {
             .await
             .unwrap();
 
-        let feature_entries = query_reflog(&layer, repo.path(), Some("feature"), None).await.unwrap();
+        let feature_entries = query_reflog(&layer, repo.path(), Some("feature"), None)
+            .await
+            .unwrap();
         assert!(!feature_entries.is_empty());
         assert_eq!(feature_entries[0].operation, "commit");
         assert_eq!(feature_entries[0].message, "Feature commit");
@@ -437,7 +451,9 @@ mod tests {
         let path = repo.path();
 
         // Check initial state has 2 commits
-        let entries_before = query_reflog(&layer, path, Some("HEAD"), None).await.unwrap();
+        let entries_before = query_reflog(&layer, path, Some("HEAD"), None)
+            .await
+            .unwrap();
         let second_commit_sha = entries_before[0].commit_sha.clone();
         let first_commit_sha = entries_before[1].commit_sha.clone();
 
@@ -462,7 +478,9 @@ mod tests {
             .unwrap();
         assert_eq!(current_head.stdout_utf8_lossy().trim(), first_commit_sha);
 
-        let reflog_after_bad_reset = query_reflog(&layer, path, Some("HEAD"), None).await.unwrap();
+        let reflog_after_bad_reset = query_reflog(&layer, path, Some("HEAD"), None)
+            .await
+            .unwrap();
         assert_eq!(reflog_after_bad_reset[0].operation, "reset");
         // Prior commit (second_commit_sha) is at HEAD@{1}
         assert_eq!(reflog_after_bad_reset[1].commit_sha, second_commit_sha);

@@ -44,7 +44,8 @@ impl AskpassServer {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .subsec_nanos();
-        let socket_path = std::env::temp_dir().join(format!("gittree-askpass-{pid}-{rand_id}.sock"));
+        let socket_path =
+            std::env::temp_dir().join(format!("gittree-askpass-{pid}-{rand_id}.sock"));
 
         if socket_path.exists() {
             let _ = std::fs::remove_file(&socket_path);
@@ -70,63 +71,58 @@ impl AskpassServer {
                 Ok(l) => l,
                 Err(_) => return,
             };
-            loop {
-                match listener.accept().await {
-                    Ok((stream, _)) => {
-                        let app = app_handle_clone.clone();
-                        let pending = pending_clone.clone();
-                        let id = format!("askpass-{}", counter_clone.fetch_add(1, Ordering::SeqCst));
+            while let Ok((stream, _)) = listener.accept().await {
+                let app = app_handle_clone.clone();
+                let pending = pending_clone.clone();
+                let id = format!("askpass-{}", counter_clone.fetch_add(1, Ordering::SeqCst));
 
-                        tokio::spawn(async move {
-                            let (reader, mut writer) = stream.into_split();
-                            let mut buf_reader = BufReader::new(reader);
-                            let mut line = String::new();
+                tokio::spawn(async move {
+                    let (reader, mut writer) = stream.into_split();
+                    let mut buf_reader = BufReader::new(reader);
+                    let mut line = String::new();
 
-                            if buf_reader.read_line(&mut line).await.is_err() {
-                                return;
-                            }
-
-                            let prompt = line.trim().to_string();
-                            let prompt_type = classify_prompt(&prompt);
-
-                            let (tx, rx) = oneshot::channel();
-                            {
-                                let mut map = pending.lock().await;
-                                map.insert(id.clone(), tx);
-                            }
-
-                            let payload = AskpassPromptPayload {
-                                id: id.clone(),
-                                prompt: prompt.clone(),
-                                prompt_type,
-                            };
-
-                            let _ = app.emit("askpass:prompt", payload);
-
-                            // Wait for user input or timeout (120s)
-                            let result = tokio::time::timeout(Duration::from_secs(120), rx).await;
-
-                            // Clean up pending
-                            {
-                                let mut map = pending.lock().await;
-                                map.remove(&id);
-                            }
-
-                            match result {
-                                Ok(Ok(Some(response))) => {
-                                    let _ = writer.write_all(response.as_bytes()).await;
-                                    let _ = writer.write_all(b"\n").await;
-                                    let _ = writer.flush().await;
-                                }
-                                _ => {
-                                    // User cancelled or timeout: close without writing so client exits with 1
-                                    let _ = writer.shutdown().await;
-                                }
-                            }
-                        });
+                    if buf_reader.read_line(&mut line).await.is_err() {
+                        return;
                     }
-                    Err(_) => break,
-                }
+
+                    let prompt = line.trim().to_string();
+                    let prompt_type = classify_prompt(&prompt);
+
+                    let (tx, rx) = oneshot::channel();
+                    {
+                        let mut map = pending.lock().await;
+                        map.insert(id.clone(), tx);
+                    }
+
+                    let payload = AskpassPromptPayload {
+                        id: id.clone(),
+                        prompt: prompt.clone(),
+                        prompt_type,
+                    };
+
+                    let _ = app.emit("askpass:prompt", payload);
+
+                    // Wait for user input or timeout (120s)
+                    let result = tokio::time::timeout(Duration::from_secs(120), rx).await;
+
+                    // Clean up pending
+                    {
+                        let mut map = pending.lock().await;
+                        map.remove(&id);
+                    }
+
+                    match result {
+                        Ok(Ok(Some(response))) => {
+                            let _ = writer.write_all(response.as_bytes()).await;
+                            let _ = writer.write_all(b"\n").await;
+                            let _ = writer.flush().await;
+                        }
+                        _ => {
+                            // User cancelled or timeout: close without writing so client exits with 1
+                            let _ = writer.shutdown().await;
+                        }
+                    }
+                });
             }
         });
 

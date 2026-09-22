@@ -103,10 +103,7 @@ fn parse_track_counts(track: &str) -> (u32, u32) {
     (ahead, behind)
 }
 
-pub async fn query_branches(
-    layer: &ProcessLayer,
-    root: &Path,
-) -> Result<Vec<BranchEntry>, String> {
+pub async fn query_branches(layer: &ProcessLayer, root: &Path) -> Result<Vec<BranchEntry>, String> {
     let format = "%(refname:short)%00%(HEAD)%00%(objectname:short)%00%(contents:subject)%00%(upstream:short)%00%(upstream:track,nobracket)%00%(refname)%00";
     let call = GitCall::new(
         root,
@@ -165,83 +162,83 @@ pub async fn query_branches(
     }
 
     // Resolve upstream basis and ahead/behind for each entry
-    let futures = raw_entries.into_iter().map(|(
-        name,
-        is_head,
-        is_remote,
-        target_commit,
-        commit_subject,
-        upstream_short,
-        upstream_track,
-    )| {
-        async move {
-            if is_remote {
-                BranchEntry {
-                    name,
-                    is_head,
-                    is_remote: true,
-                    target_commit,
-                    commit_subject,
-                    upstream: None,
-                    ahead_behind: None,
-                    upstream_basis: UpstreamBasis::None,
-                }
-            } else if !upstream_short.is_empty() {
-                let ahead_behind = parse_track_counts(&upstream_track);
-                BranchEntry {
-                    name,
-                    is_head,
-                    is_remote: false,
-                    target_commit,
-                    commit_subject,
-                    upstream: Some(upstream_short.clone()),
-                    ahead_behind: Some(ahead_behind),
-                    upstream_basis: UpstreamBasis::Configured {
-                        refname: upstream_short,
-                    },
-                }
-            } else {
-                let basis = resolve_upstream_basis(layer, root, Some(&name)).await;
-                let (upstream, ahead_behind) = match &basis {
-                    UpstreamBasis::Inferred { refname } => {
-                        let range = format!("{refname}...{name}");
-                        let count_call = GitCall::new(
-                            root,
-                            ["rev-list", "--left-right", "--count", &range],
-                        );
-                        let ab = match layer
-                            .run(count_call, Intent::Read, CancellationToken::new())
-                            .await
-                        {
-                            Ok(res) if res.ok() => {
-                                let stdout = res.stdout_utf8_lossy();
-                                let mut nums = stdout
-                                    .split_whitespace()
-                                    .filter_map(|s| s.parse::<u32>().ok());
-                                let behind = nums.next().unwrap_or(0);
-                                let ahead = nums.next().unwrap_or(0);
-                                Some((ahead, behind))
-                            }
-                            _ => None,
-                        };
-                        (Some(refname.clone()), ab)
+    let futures = raw_entries.into_iter().map(
+        |(
+            name,
+            is_head,
+            is_remote,
+            target_commit,
+            commit_subject,
+            upstream_short,
+            upstream_track,
+        )| {
+            async move {
+                if is_remote {
+                    BranchEntry {
+                        name,
+                        is_head,
+                        is_remote: true,
+                        target_commit,
+                        commit_subject,
+                        upstream: None,
+                        ahead_behind: None,
+                        upstream_basis: UpstreamBasis::None,
                     }
-                    _ => (None, None),
-                };
+                } else if !upstream_short.is_empty() {
+                    let ahead_behind = parse_track_counts(&upstream_track);
+                    BranchEntry {
+                        name,
+                        is_head,
+                        is_remote: false,
+                        target_commit,
+                        commit_subject,
+                        upstream: Some(upstream_short.clone()),
+                        ahead_behind: Some(ahead_behind),
+                        upstream_basis: UpstreamBasis::Configured {
+                            refname: upstream_short,
+                        },
+                    }
+                } else {
+                    let basis = resolve_upstream_basis(layer, root, Some(&name)).await;
+                    let (upstream, ahead_behind) = match &basis {
+                        UpstreamBasis::Inferred { refname } => {
+                            let range = format!("{refname}...{name}");
+                            let count_call =
+                                GitCall::new(root, ["rev-list", "--left-right", "--count", &range]);
+                            let ab = match layer
+                                .run(count_call, Intent::Read, CancellationToken::new())
+                                .await
+                            {
+                                Ok(res) if res.ok() => {
+                                    let stdout = res.stdout_utf8_lossy();
+                                    let mut nums = stdout
+                                        .split_whitespace()
+                                        .filter_map(|s| s.parse::<u32>().ok());
+                                    let behind = nums.next().unwrap_or(0);
+                                    let ahead = nums.next().unwrap_or(0);
+                                    Some((ahead, behind))
+                                }
+                                _ => None,
+                            };
+                            (Some(refname.clone()), ab)
+                        }
+                        _ => (None, None),
+                    };
 
-                BranchEntry {
-                    name,
-                    is_head,
-                    is_remote: false,
-                    target_commit,
-                    commit_subject,
-                    upstream,
-                    ahead_behind,
-                    upstream_basis: basis,
+                    BranchEntry {
+                        name,
+                        is_head,
+                        is_remote: false,
+                        target_commit,
+                        commit_subject,
+                        upstream,
+                        ahead_behind,
+                        upstream_basis: basis,
+                    }
                 }
             }
-        }
-    });
+        },
+    );
 
     Ok(join_all(futures).await)
 }
@@ -272,7 +269,11 @@ pub async fn create_branch(
     }
 
     let result = layer
-        .run(GitCall::new(root, args), Intent::Write, CancellationToken::new())
+        .run(
+            GitCall::new(root, args),
+            Intent::Write,
+            CancellationToken::new(),
+        )
         .await
         .map_err(|e| e.to_string())?;
 
@@ -317,7 +318,11 @@ pub async fn create_tracking_branch(
     };
 
     let result = layer
-        .run(GitCall::new(root, args), Intent::Write, CancellationToken::new())
+        .run(
+            GitCall::new(root, args),
+            Intent::Write,
+            CancellationToken::new(),
+        )
         .await
         .map_err(|e| e.to_string())?;
 
@@ -485,7 +490,10 @@ pub async fn delete_branch(
         // Query unmerged commits on the branch not in HEAD
         let fmt = format!("--format=%H{0}%P{0}%an{0}%ae{0}%ad{0}%s", FIELD_SEP);
         let log_call = GitCall::new(root, ["log", &fmt, name, "--not", "HEAD"]);
-        let commits = match layer.run(log_call, Intent::Read, CancellationToken::new()).await {
+        let commits = match layer
+            .run(log_call, Intent::Read, CancellationToken::new())
+            .await
+        {
             Ok(res) if res.ok() => res
                 .stdout_utf8_lossy()
                 .lines()
@@ -496,7 +504,10 @@ pub async fn delete_branch(
 
         // Query tip commit
         let rev_call = GitCall::new(root, ["rev-parse", "--short", name]);
-        let tip_commit = match layer.run(rev_call, Intent::Read, CancellationToken::new()).await {
+        let tip_commit = match layer
+            .run(rev_call, Intent::Read, CancellationToken::new())
+            .await
+        {
             Ok(res) if res.ok() => res.stdout_utf8_lossy().trim().to_string(),
             _ => name.to_string(),
         };
@@ -549,15 +560,12 @@ pub async fn compare_branches(
     let ahead_commits = if ahead > 0 {
         let log_call = GitCall::new(
             root,
-            [
-                "log",
-                &fmt,
-                "-n",
-                "100",
-                &format!("{base}..{target}"),
-            ],
+            ["log", &fmt, "-n", "100", &format!("{base}..{target}")],
         );
-        match layer.run(log_call, Intent::Read, CancellationToken::new()).await {
+        match layer
+            .run(log_call, Intent::Read, CancellationToken::new())
+            .await
+        {
             Ok(res) if res.ok() => res
                 .stdout_utf8_lossy()
                 .lines()
@@ -573,15 +581,12 @@ pub async fn compare_branches(
     let behind_commits = if behind > 0 {
         let log_call = GitCall::new(
             root,
-            [
-                "log",
-                &fmt,
-                "-n",
-                "100",
-                &format!("{target}..{base}"),
-            ],
+            ["log", &fmt, "-n", "100", &format!("{target}..{base}")],
         );
-        match layer.run(log_call, Intent::Read, CancellationToken::new()).await {
+        match layer
+            .run(log_call, Intent::Read, CancellationToken::new())
+            .await
+        {
             Ok(res) if res.ok() => res
                 .stdout_utf8_lossy()
                 .lines()

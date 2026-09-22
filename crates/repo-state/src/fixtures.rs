@@ -67,7 +67,8 @@ pub fn generate_large_history(
     commit_count: usize,
     branch_count: usize,
 ) -> Result<(), String> {
-    fs::create_dir_all(root).map_err(|e| format!("failed to create dir {}: {e}", root.display()))?;
+    fs::create_dir_all(root)
+        .map_err(|e| format!("failed to create dir {}: {e}", root.display()))?;
     run_git(root, &["init", "-q", "-b", "main"])?;
 
     let mut child = Command::new("git")
@@ -81,7 +82,10 @@ pub fn generate_large_history(
     let mut branch_heads: Vec<usize> = vec![0; num_branches];
 
     {
-        let stdin = child.stdin.as_mut().ok_or("failed to open stdin for fast-import")?;
+        let stdin = child
+            .stdin
+            .as_mut()
+            .ok_or("failed to open stdin for fast-import")?;
         writeln!(stdin, "blob\nmark :1\ndata 5\nhello")
             .map_err(|e| format!("failed to write initial blob: {e}"))?;
 
@@ -96,13 +100,18 @@ pub fn generate_large_history(
 
             writeln!(stdin, "commit refs/heads/{branch_name}")
                 .map_err(|e| format!("failed to write commit ref: {e}"))?;
-            writeln!(stdin, "mark :{mark}")
-                .map_err(|e| format!("failed to write mark: {e}"))?;
+            writeln!(stdin, "mark :{mark}").map_err(|e| format!("failed to write mark: {e}"))?;
             let timestamp = 1_700_000_000 + i as u64;
-            writeln!(stdin, "author Fixture <fixture@example.com> {timestamp} +0000")
-                .map_err(|e| format!("failed to write author: {e}"))?;
-            writeln!(stdin, "committer Fixture <fixture@example.com> {timestamp} +0000")
-                .map_err(|e| format!("failed to write committer: {e}"))?;
+            writeln!(
+                stdin,
+                "author Fixture <fixture@example.com> {timestamp} +0000"
+            )
+            .map_err(|e| format!("failed to write author: {e}"))?;
+            writeln!(
+                stdin,
+                "committer Fixture <fixture@example.com> {timestamp} +0000"
+            )
+            .map_err(|e| format!("failed to write committer: {e}"))?;
 
             let msg = format!("commit {i} on {branch_name}");
             writeln!(stdin, "data {}\n{msg}", msg.len())
@@ -124,7 +133,9 @@ pub fn generate_large_history(
         }
     }
 
-    let status = child.wait().map_err(|e| format!("fast-import wait error: {e}"))?;
+    let status = child
+        .wait()
+        .map_err(|e| format!("fast-import wait error: {e}"))?;
     if !status.success() {
         return Err("git fast-import exited with failure".to_string());
     }

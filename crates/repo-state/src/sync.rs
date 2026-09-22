@@ -1,7 +1,7 @@
-use std::collections::HashMap;
-use std::path::Path;
 use futures::future::join_all;
 use git_process::{GitCall, Intent, ProcessLayer};
+use std::collections::HashMap;
+use std::path::Path;
 use tokio_util::sync::CancellationToken;
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -106,10 +106,7 @@ pub struct MultiRemoteFetchResult {
     pub results: Vec<RemoteFetchOutcome>,
 }
 
-pub async fn query_remotes(
-    layer: &ProcessLayer,
-    root: &Path,
-) -> Result<Vec<RemoteInfo>, String> {
+pub async fn query_remotes(layer: &ProcessLayer, root: &Path) -> Result<Vec<RemoteInfo>, String> {
     let res = layer
         .run(
             GitCall::new(root, ["remote", "-v"]),
@@ -501,12 +498,22 @@ mod tests {
         setup_repo(root);
 
         std::process::Command::new("git")
-            .args(["remote", "add", "origin", "https://github.com/example/repo.git"])
+            .args([
+                "remote",
+                "add",
+                "origin",
+                "https://github.com/example/repo.git",
+            ])
             .current_dir(root)
             .output()
             .unwrap();
         std::process::Command::new("git")
-            .args(["remote", "add", "upstream", "git@github.com:upstream/repo.git"])
+            .args([
+                "remote",
+                "add",
+                "upstream",
+                "git@github.com:upstream/repo.git",
+            ])
             .current_dir(root)
             .output()
             .unwrap();
@@ -516,9 +523,15 @@ mod tests {
 
         assert_eq!(remotes.len(), 2);
         assert_eq!(remotes[0].name, "origin");
-        assert_eq!(remotes[0].fetch_url.as_deref(), Some("https://github.com/example/repo.git"));
+        assert_eq!(
+            remotes[0].fetch_url.as_deref(),
+            Some("https://github.com/example/repo.git")
+        );
         assert_eq!(remotes[1].name, "upstream");
-        assert_eq!(remotes[1].push_url.as_deref(), Some("git@github.com:upstream/repo.git"));
+        assert_eq!(
+            remotes[1].push_url.as_deref(),
+            Some("git@github.com:upstream/repo.git")
+        );
     }
 
     #[tokio::test]
@@ -533,11 +546,15 @@ mod tests {
         let unacknowledged_opts = PushOptions {
             remote: "origin".to_string(),
             refspec: None,
-            force_mode: PushForceMode::BareForce { acknowledged_destructive: false },
+            force_mode: PushForceMode::BareForce {
+                acknowledged_destructive: false,
+            },
             tags: false,
             set_upstream: false,
         };
-        let err = push(&layer, root, unacknowledged_opts, CancellationToken::new()).await.unwrap_err();
+        let err = push(&layer, root, unacknowledged_opts, CancellationToken::new())
+            .await
+            .unwrap_err();
         assert!(err.contains("destruction of remote commits was not explicitly acknowledged"));
     }
 
@@ -556,31 +573,67 @@ mod tests {
 
         // Clone local_a, commit and push
         std::process::Command::new("git")
-            .args(["clone", remote_dir.to_str().unwrap(), local_a.to_str().unwrap()])
+            .args([
+                "clone",
+                remote_dir.to_str().unwrap(),
+                local_a.to_str().unwrap(),
+            ])
             .output()
             .unwrap();
         setup_repo(&local_a);
         std::fs::write(local_a.join("a.txt"), "hello from a\n").unwrap();
-        std::process::Command::new("git").args(["add", "."]).current_dir(&local_a).output().unwrap();
-        std::process::Command::new("git").args(["commit", "-m", "commit A"]).current_dir(&local_a).output().unwrap();
-        std::process::Command::new("git").args(["push", "origin", "main"]).current_dir(&local_a).output().unwrap();
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(&local_a)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", "commit A"])
+            .current_dir(&local_a)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["push", "origin", "main"])
+            .current_dir(&local_a)
+            .output()
+            .unwrap();
 
         // Clone local_b (now at commit A)
         std::process::Command::new("git")
-            .args(["clone", remote_dir.to_str().unwrap(), local_b.to_str().unwrap()])
+            .args([
+                "clone",
+                remote_dir.to_str().unwrap(),
+                local_b.to_str().unwrap(),
+            ])
             .output()
             .unwrap();
         setup_repo(&local_b);
 
         // In local_a, make another commit and push
         std::fs::write(local_a.join("a.txt"), "hello from a 2\n").unwrap();
-        std::process::Command::new("git").args(["commit", "-am", "commit A2"]).current_dir(&local_a).output().unwrap();
-        std::process::Command::new("git").args(["push", "origin", "main"]).current_dir(&local_a).output().unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-am", "commit A2"])
+            .current_dir(&local_a)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["push", "origin", "main"])
+            .current_dir(&local_a)
+            .output()
+            .unwrap();
 
         // In local_b, make independent commit
         std::fs::write(local_b.join("b.txt"), "hello from b\n").unwrap();
-        std::process::Command::new("git").args(["add", "."]).current_dir(&local_b).output().unwrap();
-        std::process::Command::new("git").args(["commit", "-m", "commit B"]).current_dir(&local_b).output().unwrap();
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(&local_b)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", "commit B"])
+            .current_dir(&local_b)
+            .output()
+            .unwrap();
 
         let layer = ProcessLayer::new(4, Duration::from_secs(10));
 
@@ -601,7 +654,10 @@ mod tests {
         .unwrap();
 
         match outcome {
-            PushOutcome::RejectedNonFastForward { remote_message, suggest_pull } => {
+            PushOutcome::RejectedNonFastForward {
+                remote_message,
+                suggest_pull,
+            } => {
                 assert!(suggest_pull);
                 assert!(
                     remote_message.contains("rejected") || remote_message.contains("fetch first")
@@ -620,7 +676,13 @@ mod tests {
         // Create one valid local bare remote
         let valid_remote = dir.path().join("valid_remote.git");
         std::process::Command::new("git")
-            .args(["init", "--bare", "-b", "main", valid_remote.to_str().unwrap()])
+            .args([
+                "init",
+                "--bare",
+                "-b",
+                "main",
+                valid_remote.to_str().unwrap(),
+            ])
             .output()
             .unwrap();
 
@@ -660,7 +722,11 @@ mod tests {
         let valid_outcome = result.results.iter().find(|r| r.remote == "valid").unwrap();
         assert!(valid_outcome.success);
 
-        let broken_outcome = result.results.iter().find(|r| r.remote == "broken").unwrap();
+        let broken_outcome = result
+            .results
+            .iter()
+            .find(|r| r.remote == "broken")
+            .unwrap();
         assert!(!broken_outcome.success);
         assert!(broken_outcome.error.is_some());
     }
@@ -675,16 +741,7 @@ mod tests {
         cancel.cancel(); // Pre-cancelled token
 
         let layer = ProcessLayer::new(4, Duration::from_secs(10));
-        let outcome = fetch_single_remote(
-            &layer,
-            root,
-            "origin",
-            false,
-            false,
-            None,
-            cancel,
-        )
-        .await;
+        let outcome = fetch_single_remote(&layer, root, "origin", false, false, None, cancel).await;
 
         assert!(!outcome.success);
         assert!(outcome.summary.contains("cancelled"));

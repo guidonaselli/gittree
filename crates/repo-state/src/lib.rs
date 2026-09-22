@@ -8,6 +8,7 @@ mod commit_detail;
 mod conflicts;
 mod diff;
 mod discard;
+pub mod fixtures;
 mod graph;
 mod history;
 mod ignore;
@@ -24,7 +25,6 @@ mod sync;
 mod tags;
 mod upstream;
 mod working_copy;
-pub mod fixtures;
 
 pub use amend::{amend, head_is_published};
 pub use blame::{query_blame, BlameLine, BlameOptions};
@@ -36,10 +36,10 @@ pub use branches::{
 pub use commit::{commit, CommitOptions};
 pub use commit_detail::{query_commit_detail, CommitDetail, FileStat, SignatureState};
 pub use conflicts::{
-    check_conflict_markers_in_text, check_file_conflict_markers, launch_mergetool,
-    query_conflicts, query_mergetool_config, resolve_conflict, stage_paths_with_guard,
-    ConflictItem, ConflictMarkerInfo, ConflictResolution, ConflictType, MergetoolConfig,
-    MergetoolOutcome, StageOutcome, SubmoduleCandidateCommit, SubmoduleConflictInfo,
+    check_conflict_markers_in_text, check_file_conflict_markers, launch_mergetool, query_conflicts,
+    query_mergetool_config, resolve_conflict, stage_paths_with_guard, ConflictItem,
+    ConflictMarkerInfo, ConflictResolution, ConflictType, MergetoolConfig, MergetoolOutcome,
+    StageOutcome, SubmoduleCandidateCommit, SubmoduleConflictInfo,
 };
 pub use diff::{
     diff_file, diff_file_with_options, diff_revisions, read_blob_base64,
@@ -58,10 +58,10 @@ pub use ignore::{
 };
 pub use integration::{
     abort_operation, check_dirty_tree, continue_operation, query_active_operation,
-    query_conflicting_files, query_rebase_plan, skip_operation, start_cherry_pick, start_interactive_rebase,
-    start_merge, start_revert, AbortOutcome, ActiveOperationDetail, ActiveOperationKind,
-    CherryPickOptions, CherryPickOutcome, DirtyTreeDetails, MergeOptions, MergeOutcome,
-    OperationStepOutcome, RebaseAction, RebaseOutcome, RebasePlanItem, RevertOptions,
+    query_conflicting_files, query_rebase_plan, skip_operation, start_cherry_pick,
+    start_interactive_rebase, start_merge, start_revert, AbortOutcome, ActiveOperationDetail,
+    ActiveOperationKind, CherryPickOptions, CherryPickOutcome, DirtyTreeDetails, MergeOptions,
+    MergeOutcome, OperationStepOutcome, RebaseAction, RebaseOutcome, RebasePlanItem, RevertOptions,
     RevertOutcome,
 };
 pub use message_template::{commit_message_template, CommitMessageTemplate};
@@ -77,9 +77,16 @@ pub use stashes::{
 };
 pub use status::{query_repository_state, InProgressOperation, RepositoryState};
 pub use submodule::{
-    query_single_submodule, query_submodule_matrix, query_submodule_matrix_with_depth,
-    GitlinkDivergence, MalformedGitmodulesEntry, SubmoduleBranch, SubmoduleDrift,
-    SubmoduleMatrixResult, SubmoduleState,
+    bump_bulk_gitlinks, bump_submodule_gitlink, execute_bulk_checkout, execute_bulk_pull,
+    execute_bulk_reset_to_gitlink, preview_bulk_checkout, preview_bulk_pull,
+    preview_bulk_reset_to_gitlink, query_single_submodule, query_submodule_matrix,
+    query_submodule_matrix_with_depth, refresh_submodules_network, BulkCheckoutAction,
+    BulkCheckoutPreview, BulkCheckoutPreviewItem, BulkItemOutcome, BulkOperationItemResult,
+    BulkOperationResult, BulkPullAction, BulkPullOptions, BulkPullPreview, BulkPullPreviewItem,
+    BulkResetAction, BulkResetPreview, BulkResetPreviewItem, BumpGitlinkOutcome, GitlinkDivergence,
+    MalformedGitmodulesEntry, SubmoduleBranch, SubmoduleDrift, SubmoduleMatrixResult,
+    SubmoduleRefreshOptions, SubmoduleRefreshProgress, SubmoduleRefreshResult,
+    SubmoduleRefreshRowResult, SubmoduleRefreshStage, SubmoduleRefreshStatus, SubmoduleState,
 };
 pub use sync::{
     fetch, pull, push, query_remotes, FetchOptions, MultiRemoteFetchResult, PullOptions,

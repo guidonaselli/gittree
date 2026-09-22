@@ -91,3 +91,106 @@ fn local_matrix_query_meets_budget_on_25_submodules() {
         "submodules with an unresolved core field: {unresolved:?}"
     );
 }
+
+const NETWORK_REFRESH_BUDGET: Duration = Duration::from_millis(10000);
+
+#[test]
+#[ignore = "generates 25 real git repositories; run explicitly (cargo test --workspace -- --ignored) or in CI"]
+fn network_refresh_and_bulk_operations_meet_budget_on_25_submodules() {
+    use repo_state::{
+        execute_bulk_reset_to_gitlink, preview_bulk_checkout, preview_bulk_reset_to_gitlink,
+        refresh_submodules_network, BulkCheckoutAction, BulkResetAction, SubmoduleRefreshOptions,
+    };
+    use std::path::PathBuf;
+    use tokio_util::sync::CancellationToken;
+
+    let root_holder = tempfile::tempdir().unwrap();
+    let root = root_holder.path().join("superproject");
+    generate_superproject(&root, SUBMODULE_COUNT);
+
+    // Dirty sub-05 to assert dirty protection across the 25 submodules
+    let dirty_sub = root.join("sub-05");
+    std::fs::write(dirty_sub.join("uncommitted.txt"), "dirty worktree").unwrap();
+
+    let layer = ProcessLayer::new(8, Duration::from_secs(30));
+    let rt = tokio::runtime::Runtime::new().unwrap();
+
+    // 1. Parallel network refresh across 25 submodules with concurrency 8
+    let start = Instant::now();
+    let refresh_result = rt.block_on(refresh_submodules_network(
+        &layer,
+        &root,
+        SubmoduleRefreshOptions {
+            concurrency: Some(8),
+            paths: None,
+            prune: Some(false),
+            tags: Some(false),
+        },
+        None,
+        CancellationToken::new(),
+    ));
+    let refresh_elapsed = start.elapsed();
+
+    assert!(
+        refresh_elapsed < NETWORK_REFRESH_BUDGET,
+        "network refresh of 25 submodules took {refresh_elapsed:?}, budget is {NETWORK_REFRESH_BUDGET:?}"
+    );
+    assert_eq!(refresh_result.total, SUBMODULE_COUNT);
+    assert_eq!(refresh_result.succeeded, SUBMODULE_COUNT);
+    assert_eq!(refresh_result.failed, 0);
+
+    // 2. Bulk checkout preview with dirty protection
+    let paths = Some(vec![
+        PathBuf::from("sub-01"),
+        PathBuf::from("sub-02"),
+        PathBuf::from("sub-05"),
+    ]);
+    let checkout_preview = rt.block_on(preview_bulk_checkout(&layer, &root, "main", paths));
+    assert_eq!(checkout_preview.items.len(), 3);
+    let sub05_checkout = checkout_preview
+        .items
+        .iter()
+        .find(|item| item.path.ends_with("sub-05"))
+        .expect("sub-05 must be in preview");
+    assert!(
+        matches!(
+            sub05_checkout.action,
+            BulkCheckoutAction::SkippedDirty { .. }
+        ),
+        "sub-05 must be skipped as dirty, got {:?}",
+        sub05_checkout.action
+    );
+
+    // 3. Bulk reset preview and execute refusing dirty submodule
+    let reset_paths = Some(vec![PathBuf::from("sub-00"), PathBuf::from("sub-05")]);
+    let reset_preview = rt.block_on(preview_bulk_reset_to_gitlink(
+        &layer,
+        &root,
+        reset_paths.clone(),
+    ));
+    assert_eq!(reset_preview.items.len(), 2);
+    let sub05_reset = reset_preview
+        .items
+        .iter()
+        .find(|item| item.path.ends_with("sub-05"))
+        .expect("sub-05 in reset preview");
+    assert!(
+        matches!(sub05_reset.action, BulkResetAction::SkippedDirty { .. }),
+        "sub-05 must be skipped as dirty in reset preview"
+    );
+
+    let reset_exec = rt.block_on(execute_bulk_reset_to_gitlink(
+        &layer,
+        &root,
+        reset_paths,
+        CancellationToken::new(),
+    ));
+    assert_eq!(reset_exec.total, 2);
+    assert_eq!(reset_exec.succeeded, 1);
+    assert_eq!(reset_exec.skipped, 1);
+    assert_eq!(
+        std::fs::read_to_string(dirty_sub.join("uncommitted.txt")).unwrap(),
+        "dirty worktree",
+        "dirty file must remain untouched"
+    );
+}

@@ -7,7 +7,7 @@ fn run_askpass_client(socket_path: &str, prompt: &str) -> bool {
         return false;
     };
 
-    let single_line_prompt = prompt.replace('\r', " ").replace('\n', " ");
+    let single_line_prompt = prompt.replace(['\r', '\n'], " ");
     if writeln!(stream, "{}", single_line_prompt).is_err() {
         return false;
     }

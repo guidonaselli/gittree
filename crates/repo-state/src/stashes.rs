@@ -257,7 +257,11 @@ pub async fn create_stash(
     }
 
     let res = layer
-        .run(GitCall::new(root, args), Intent::Write, CancellationToken::new())
+        .run(
+            GitCall::new(root, args),
+            Intent::Write,
+            CancellationToken::new(),
+        )
         .await
         .map_err(|e| format!("Process error creating stash: {e}"))?;
 
@@ -286,7 +290,11 @@ pub async fn apply_stash(
     args.push(selector.to_string());
 
     let res = layer
-        .run(GitCall::new(root, args), Intent::Write, CancellationToken::new())
+        .run(
+            GitCall::new(root, args),
+            Intent::Write,
+            CancellationToken::new(),
+        )
         .await
         .map_err(|e| format!("Process error applying stash: {e}"))?;
 
@@ -317,7 +325,11 @@ pub async fn pop_stash(
     args.push(selector.to_string());
 
     let res = layer
-        .run(GitCall::new(root, args), Intent::Write, CancellationToken::new())
+        .run(
+            GitCall::new(root, args),
+            Intent::Write,
+            CancellationToken::new(),
+        )
         .await
         .map_err(|e| format!("Process error popping stash: {e}"))?;
 
@@ -559,7 +571,11 @@ mod tests {
 
         // Confirm the stash entry is STILL in the stash list
         let stashes = query_stashes(&layer, dir.path()).await.unwrap();
-        assert_eq!(stashes.len(), 1, "Stash must be retained after pop conflict");
+        assert_eq!(
+            stashes.len(),
+            1,
+            "Stash must be retained after pop conflict"
+        );
         assert_eq!(stashes[0].selector, "stash@{0}");
     }
 }
