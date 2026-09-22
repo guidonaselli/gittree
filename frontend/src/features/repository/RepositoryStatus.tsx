@@ -7,6 +7,7 @@ export const RepositoryStatus: Component<{
   onOpenBranches?: () => void;
   onOpenTags?: () => void;
   onOpenStashes?: () => void;
+  onOpenReflog?: () => void;
   onOpenFetch?: () => void;
   onOpenPull?: () => void;
   onOpenPush?: () => void;
@@ -67,6 +68,11 @@ export const RepositoryStatus: Component<{
         <Show when={props.onOpenStashes}>
           <button class="collapse-toggle" onClick={props.onOpenStashes}>
             Stashes ({stashCount()})
+          </button>
+        </Show>
+        <Show when={props.onOpenReflog}>
+          <button class="collapse-toggle" onClick={props.onOpenReflog}>
+            Reflog
           </button>
         </Show>
         <Show when={props.onOpenFetch && props.onOpenPull && props.onOpenPush}>

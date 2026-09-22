@@ -636,4 +636,34 @@ export interface AskpassPromptPayload {
   prompt_type: AskpassPromptType;
 }
 
+export interface ReflogEntry {
+  selector: string;
+  index: number;
+  short_sha: string;
+  commit_sha: string;
+  operation: string;
+  message: string;
+  committer_date: string;
+  committer_name: string;
+  committer_email: string;
+}
+
+export type ResetMode = "soft" | "mixed" | "hard";
+
+export interface ResetReflogOptions {
+  target_ref: string;
+  commit_sha: string;
+  mode: ResetMode;
+}
+
+export interface ResetOutcome {
+  success: boolean;
+  restored_ref: string;
+  restored_commit: string;
+  restored_commit_short: string;
+  mode: ResetMode;
+  summary: string;
+}
+
+
 

@@ -13,6 +13,7 @@ mod history;
 mod ignore;
 mod integration;
 mod message_template;
+mod reflog;
 mod resolve;
 mod resolved;
 mod staging;
@@ -64,6 +65,9 @@ pub use integration::{
     RevertOutcome,
 };
 pub use message_template::{commit_message_template, CommitMessageTemplate};
+pub use reflog::{
+    query_reflog, reset_to_reflog_entry, ReflogEntry, ResetMode, ResetOutcome, ResetReflogOptions,
+};
 pub use resolve::{init_repository, resolve_open, OpenOutcome};
 pub use resolved::Resolved;
 pub use staging::{stage_paths, unstage_paths};

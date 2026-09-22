@@ -37,6 +37,9 @@ import type {
   RebaseOutcome,
   RebasePlanItem,
   RemoteInfo,
+  ReflogEntry,
+  ResetOutcome,
+  ResetReflogOptions,
   RepositoryState,
   Resolved,
   RevertOptions,
@@ -670,5 +673,25 @@ export function submitAskpassResponse(id: string, response: string): Promise<boo
 export function cancelAskpassResponse(id: string): Promise<boolean> {
   return invoke<boolean>("cancel_askpass_response", { id });
 }
+
+export function getReflog(
+  root: string,
+  refTarget?: string | null,
+  limit?: number | null
+): Promise<ReflogEntry[]> {
+  return invoke<ReflogEntry[]>("get_reflog", {
+    root,
+    ref_target: refTarget ?? null,
+    limit: limit ?? null,
+  });
+}
+
+export function resetToReflog(
+  root: string,
+  options: ResetReflogOptions
+): Promise<ResetOutcome> {
+  return invoke<ResetOutcome>("reset_to_reflog", { root, options });
+}
+
 
 

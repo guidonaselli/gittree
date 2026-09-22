@@ -38,6 +38,7 @@ import { HistoryView } from "./features/history/HistoryView";
 import { BranchesView } from "./features/branches/BranchesView";
 import { TagsView } from "./features/tags/TagsView";
 import { StashesView } from "./features/stashes/StashesView";
+import { ReflogView } from "./features/reflog/ReflogView";
 import { FetchModal } from "./features/sync/FetchModal";
 import { PullModal } from "./features/sync/PullModal";
 import { PushModal } from "./features/sync/PushModal";
@@ -90,7 +91,8 @@ export const App: Component = () => {
 
   const [pathInput, setPathInput] = createSignal("");
   const [openError, setOpenError] = createSignal<string | null>(null);
-  const [mainView, setMainView] = createSignal<"working-copy" | "history" | "branches" | "tags" | "stashes">("working-copy");
+  const [mainView, setMainView] = createSignal<"working-copy" | "history" | "branches" | "tags" | "stashes" | "reflog">("working-copy");
+  const [reflogTargetRef, setReflogTargetRef] = createSignal<string>("HEAD");
   const [historyScope, setHistoryScope] = createSignal<HistoryScope | undefined>(undefined);
   const [stageError, setStageError] = createSignal<string | null>(null);
   const [commitError, setCommitError] = createSignal<string | null>(null);
@@ -597,6 +599,10 @@ export const App: Component = () => {
                   onOpenBranches={() => setMainView("branches")}
                   onOpenTags={() => setMainView("tags")}
                   onOpenStashes={() => setMainView("stashes")}
+                  onOpenReflog={() => {
+                    setReflogTargetRef("HEAD");
+                    setMainView("reflog");
+                  }}
                   onOpenFetch={() => setShowFetchModal(true)}
                   onOpenPull={() => setShowPullModal(true)}
                   onOpenPush={() => setShowPushModal(true)}
@@ -666,6 +672,16 @@ export const App: Component = () => {
               >
                 Stashes
               </button>
+              <button
+                class="collapse-toggle"
+                aria-pressed={mainView() === "reflog"}
+                onClick={() => {
+                  setReflogTargetRef("HEAD");
+                  setMainView("reflog");
+                }}
+              >
+                Reflog
+              </button>
             </div>
             <Show when={mainView() === "branches"}>
               <BranchesView
@@ -675,6 +691,10 @@ export const App: Component = () => {
                   if (path) invalidate(path);
                 }}
                 onNavigateWorkingCopy={() => setMainView("working-copy")}
+                onOpenReflog={(branch) => {
+                  setReflogTargetRef(branch);
+                  setMainView("reflog");
+                }}
               />
             </Show>
             <Show when={mainView() === "tags"}>
@@ -690,6 +710,20 @@ export const App: Component = () => {
               <StashesView
                 root={activeViewPath()!}
                 onNavigateWorkingCopy={() => setMainView("working-copy")}
+              />
+            </Show>
+            <Show when={mainView() === "reflog"}>
+              <ReflogView
+                root={activeViewPath()!}
+                initialRef={reflogTargetRef()}
+                onSelectCommit={() => {
+                  setHistoryScope(undefined);
+                  setMainView("history");
+                }}
+                onResetSuccess={(outcome) => {
+                  setIntegrationNotice(outcome.summary);
+                  invalidate(activeViewPath()!);
+                }}
               />
             </Show>
             <Show when={mainView() === "history"}>

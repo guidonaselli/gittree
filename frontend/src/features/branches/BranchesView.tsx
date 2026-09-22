@@ -23,6 +23,7 @@ export interface BranchesViewProps {
   root: string;
   onCheckoutSuccess?: (branch: string) => void;
   onNavigateWorkingCopy?: () => void;
+  onOpenReflog?: (branchName: string) => void;
 }
 
 export const BranchesView: Component<BranchesViewProps> = (props) => {
@@ -254,6 +255,15 @@ export const BranchesView: Component<BranchesViewProps> = (props) => {
                     <button class="branches-btn" onClick={() => setRenameTarget(branch)}>
                       Rename
                     </button>
+                    <Show when={props.onOpenReflog}>
+                      <button
+                        class="branches-btn"
+                        onClick={() => props.onOpenReflog?.(branch.name)}
+                        title={`View reflog for ${branch.name}`}
+                      >
+                        Reflog
+                      </button>
+                    </Show>
                     <button
                       class="branches-btn branches-btn-danger"
                       disabled={branch.is_head}

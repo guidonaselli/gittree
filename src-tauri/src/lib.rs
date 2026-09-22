@@ -49,8 +49,9 @@ use repo_state::{
 };
 use repo_state::{
     fetch as repo_fetch, pull as repo_pull, push as repo_push,
-    query_remotes as repo_query_remotes, FetchOptions, MultiRemoteFetchResult, PullOptions,
-    PullOutcome, PushOptions, PushOutcome, RemoteInfo,
+    query_reflog, query_remotes as repo_query_remotes, reset_to_reflog_entry, FetchOptions,
+    MultiRemoteFetchResult, PullOptions, PullOutcome, PushOptions, PushOutcome, ReflogEntry,
+    RemoteInfo, ResetOutcome, ResetReflogOptions,
 };
 use serde::Serialize;
 use settings::{Bookmark, BookmarksState, Settings, SettingsLoadResult};
@@ -1119,6 +1120,31 @@ async fn cancel_askpass_response(
     Ok(askpass.cancel_response(&id).await)
 }
 
+#[tauri::command]
+async fn get_reflog(
+    state: State<'_, AppState>,
+    root: String,
+    ref_target: Option<String>,
+    limit: Option<usize>,
+) -> Result<Vec<ReflogEntry>, String> {
+    query_reflog(
+        &state.process_layer,
+        &PathBuf::from(root),
+        ref_target.as_deref(),
+        limit,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn reset_to_reflog(
+    state: State<'_, AppState>,
+    root: String,
+    options: ResetReflogOptions,
+) -> Result<ResetOutcome, String> {
+    reset_to_reflog_entry(&state.process_layer, &PathBuf::from(root), &options).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt::init();
@@ -1228,6 +1254,8 @@ pub fn run() {
             cancel_sync_network_operation,
             submit_askpass_response,
             cancel_askpass_response,
+            get_reflog,
+            reset_to_reflog,
         ])
         .setup(|app| {
             let askpass_server = match askpass::AskpassServer::start(app.handle().clone()) {
