@@ -1,11 +1,17 @@
 import { type Component, Show, createMemo } from "solid-js";
 import { branchLabel, isKnown, unknownReason, upstreamBasisLabel, type RepositoryState } from "../../api/types";
+import { SyncToolbar } from "../sync/SyncToolbar";
 
 export const RepositoryStatus: Component<{
   state: RepositoryState;
   onOpenBranches?: () => void;
   onOpenTags?: () => void;
   onOpenStashes?: () => void;
+  onOpenFetch?: () => void;
+  onOpenPull?: () => void;
+  onOpenPush?: () => void;
+  isSyncing?: boolean;
+  onCancelSync?: () => void;
 }> = (props) => {
   const branch = createMemo(() => branchLabel(props.state.branch));
   const inProgress = createMemo(() => props.state.in_progress);
@@ -62,6 +68,17 @@ export const RepositoryStatus: Component<{
           <button class="collapse-toggle" onClick={props.onOpenStashes}>
             Stashes ({stashCount()})
           </button>
+        </Show>
+        <Show when={props.onOpenFetch && props.onOpenPull && props.onOpenPush}>
+          <SyncToolbar
+            onOpenFetch={props.onOpenFetch!}
+            onOpenPull={props.onOpenPull!}
+            onOpenPush={props.onOpenPush!}
+            aheadCount={aheadBehind()?.ahead}
+            behindCount={aheadBehind()?.behind}
+            isSyncing={props.isSyncing}
+            onCancelSync={props.onCancelSync}
+          />
         </Show>
         <Show when={inProgress() !== "None"}>
           <span class="badge badge-warning">{inProgress()}</span>

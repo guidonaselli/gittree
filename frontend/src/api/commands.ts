@@ -17,6 +17,7 @@ import type {
   DeleteBranchOutcome,
   DesktopPalette,
   DirtyTreeDetails,
+  FetchOptions,
   FileDiff,
   IgnoreExplanation,
   IgnoreTarget,
@@ -25,11 +26,17 @@ import type {
   MergeOutcome,
   MergetoolConfig,
   MergetoolOutcome,
+  MultiRemoteFetchResult,
   OpenRepositoryResult,
   OperationStepOutcome,
+  PullOptions,
+  PullOutcome,
+  PushOptions,
+  PushOutcome,
   PushTagOptions,
   RebaseOutcome,
   RebasePlanItem,
+  RemoteInfo,
   RepositoryState,
   Resolved,
   RevertOptions,
@@ -634,6 +641,34 @@ export function launchMergetool(
 
 export function getMergetoolConfig(root: string): Promise<MergetoolConfig> {
   return invoke<MergetoolConfig>("get_mergetool_config", { root });
+}
+
+export function getRemotes(root: string): Promise<RemoteInfo[]> {
+  return invoke<RemoteInfo[]>("get_remotes", { root });
+}
+
+export function fetchRemotes(root: string, options: FetchOptions): Promise<MultiRemoteFetchResult> {
+  return invoke<MultiRemoteFetchResult>("fetch_remotes", { root, options });
+}
+
+export function pullRepository(root: string, options: PullOptions): Promise<PullOutcome> {
+  return invoke<PullOutcome>("pull_repository", { root, options });
+}
+
+export function pushRepository(root: string, options: PushOptions): Promise<PushOutcome> {
+  return invoke<PushOutcome>("push_repository", { root, options });
+}
+
+export function cancelSyncNetworkOperation(): Promise<void> {
+  return invoke<void>("cancel_sync_network_operation");
+}
+
+export function submitAskpassResponse(id: string, response: string): Promise<boolean> {
+  return invoke<boolean>("submit_askpass_response", { id, response });
+}
+
+export function cancelAskpassResponse(id: string): Promise<boolean> {
+  return invoke<boolean>("cancel_askpass_response", { id });
 }
 
 

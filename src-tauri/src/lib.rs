@@ -1,3 +1,4 @@
+mod askpass;
 mod desktop_theme;
 mod settings;
 mod watcher;
@@ -6,6 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use askpass::AskpassServer;
 use desktop_theme::DesktopPalette;
 use git_process::{check_git_version, ProcessLayer};
 use repo_state::{
@@ -45,6 +47,11 @@ use repo_state::{
     resolve_conflict as repo_resolve_conflict, stage_paths_with_guard, ConflictItem,
     ConflictMarkerInfo, ConflictResolution, MergetoolConfig, MergetoolOutcome, StageOutcome,
 };
+use repo_state::{
+    fetch as repo_fetch, pull as repo_pull, push as repo_push,
+    query_remotes as repo_query_remotes, FetchOptions, MultiRemoteFetchResult, PullOptions,
+    PullOutcome, PushOptions, PushOutcome, RemoteInfo,
+};
 use serde::Serialize;
 use settings::{Bookmark, BookmarksState, Settings, SettingsLoadResult};
 use std::sync::Mutex;
@@ -63,6 +70,9 @@ pub struct SearchState(pub Mutex<Option<CancellationToken>>);
 
 #[derive(Default)]
 pub struct WorkingCopyScanState(pub Mutex<Option<CancellationToken>>);
+
+#[derive(Default)]
+pub struct SyncNetworkState(pub Mutex<Option<CancellationToken>>);
 
 /// Runs before the Tauri builder so a failed version check never produces
 /// a half-initialized window.
@@ -994,6 +1004,121 @@ async fn get_mergetool_config(
     repo_query_mergetool_config(&state.process_layer, &root).await
 }
 
+#[tauri::command]
+async fn get_remotes(
+    state: State<'_, AppState>,
+    root: String,
+) -> Result<Vec<RemoteInfo>, String> {
+    let root = PathBuf::from(root);
+    repo_query_remotes(&state.process_layer, &root).await
+}
+
+#[tauri::command]
+async fn fetch_remotes(
+    state: State<'_, AppState>,
+    sync_state: State<'_, SyncNetworkState>,
+    root: String,
+    options: FetchOptions,
+) -> Result<MultiRemoteFetchResult, String> {
+    let root = PathBuf::from(root);
+    let cancel = CancellationToken::new();
+    {
+        let mut guard = sync_state.0.lock().expect("sync state mutex poisoned");
+        if let Some(old) = guard.replace(cancel.clone()) {
+            old.cancel();
+        }
+    }
+
+    let result = repo_fetch(&state.process_layer, &root, options, cancel).await;
+
+    {
+        let mut guard = sync_state.0.lock().expect("sync state mutex poisoned");
+        *guard = None;
+    }
+
+    result
+}
+
+#[tauri::command]
+async fn pull_repository(
+    state: State<'_, AppState>,
+    sync_state: State<'_, SyncNetworkState>,
+    root: String,
+    options: PullOptions,
+) -> Result<PullOutcome, String> {
+    let root = PathBuf::from(root);
+    let cancel = CancellationToken::new();
+    {
+        let mut guard = sync_state.0.lock().expect("sync state mutex poisoned");
+        if let Some(old) = guard.replace(cancel.clone()) {
+            old.cancel();
+        }
+    }
+
+    let result = repo_pull(&state.process_layer, &root, options, cancel).await;
+
+    {
+        let mut guard = sync_state.0.lock().expect("sync state mutex poisoned");
+        *guard = None;
+    }
+
+    result
+}
+
+#[tauri::command]
+async fn push_repository(
+    state: State<'_, AppState>,
+    sync_state: State<'_, SyncNetworkState>,
+    root: String,
+    options: PushOptions,
+) -> Result<PushOutcome, String> {
+    let root = PathBuf::from(root);
+    let cancel = CancellationToken::new();
+    {
+        let mut guard = sync_state.0.lock().expect("sync state mutex poisoned");
+        if let Some(old) = guard.replace(cancel.clone()) {
+            old.cancel();
+        }
+    }
+
+    let result = repo_push(&state.process_layer, &root, options, cancel).await;
+
+    {
+        let mut guard = sync_state.0.lock().expect("sync state mutex poisoned");
+        *guard = None;
+    }
+
+    result
+}
+
+#[tauri::command]
+async fn cancel_sync_network_operation(
+    sync_state: State<'_, SyncNetworkState>,
+) -> Result<(), String> {
+    let mut guard = sync_state.0.lock().expect("sync state mutex poisoned");
+    if let Some(token) = guard.take() {
+        token.cancel();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn submit_askpass_response(
+    askpass: State<'_, Arc<AskpassServer>>,
+    id: String,
+    response: String,
+) -> Result<bool, String> {
+    Ok(askpass.submit_response(&id, response).await)
+}
+
+#[tauri::command]
+async fn cancel_askpass_response(
+    askpass: State<'_, Arc<AskpassServer>>,
+    id: String,
+) -> Result<bool, String> {
+    Ok(askpass.cancel_response(&id).await)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt::init();
@@ -1014,6 +1139,7 @@ pub fn run() {
         .manage(WatcherState::default())
         .manage(SearchState::default())
         .manage(WorkingCopyScanState::default())
+        .manage(SyncNetworkState::default())
         .invoke_handler(tauri::generate_handler![
             get_repository_state,
             get_submodule_matrix,
@@ -1095,8 +1221,29 @@ pub fn run() {
             resolve_conflict_command,
             launch_mergetool_command,
             get_mergetool_config,
+            get_remotes,
+            fetch_remotes,
+            pull_repository,
+            push_repository,
+            cancel_sync_network_operation,
+            submit_askpass_response,
+            cancel_askpass_response,
         ])
         .setup(|app| {
+            let askpass_server = match askpass::AskpassServer::start(app.handle().clone()) {
+                Ok(server) => {
+                    for (k, v) in server.askpass_env() {
+                        std::env::set_var(k, v);
+                    }
+                    server
+                }
+                Err(err) => {
+                    tracing::error!(%err, "Failed to start askpass server");
+                    askpass::AskpassServer::dummy()
+                }
+            };
+            app.manage(askpass_server);
+
             let watch_dir = desktop_theme::published_theme_watch_dir();
             let handle = watcher::start_desktop_theme_watch(app.handle().clone(), watch_dir);
             app.manage(std::sync::Mutex::new(handle));

@@ -19,6 +19,7 @@ mod staging;
 mod stashes;
 mod status;
 mod submodule;
+mod sync;
 mod tags;
 mod upstream;
 mod working_copy;
@@ -72,6 +73,11 @@ pub use stashes::{
 };
 pub use status::{query_repository_state, InProgressOperation, RepositoryState};
 pub use submodule::{query_submodule_matrix, GitlinkDivergence, SubmoduleState};
+pub use sync::{
+    fetch, pull, push, query_remotes, FetchOptions, MultiRemoteFetchResult, PullOptions,
+    PullOutcome, PullStrategy, PushForceMode, PushOptions, PushOutcome, RemoteFetchOutcome,
+    RemoteInfo,
+};
 pub use tags::{
     create_tag, delete_remote_tag, delete_tag, push_tag, query_remote_tags, query_tags,
     CreateTagOptions, PushTagOptions, TagEntry,

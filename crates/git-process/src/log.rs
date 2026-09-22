@@ -28,6 +28,28 @@ impl Default for OperationLog {
     }
 }
 
+fn sanitize_arg(arg: &str) -> String {
+    if let Some(proto_pos) = arg.find("://") {
+        let after_proto = &arg[proto_pos + 3..];
+        if let Some(at_pos) = after_proto.find('@') {
+            let user_info = &after_proto[..at_pos];
+            if let Some(colon_pos) = user_info.find(':') {
+                let user = &user_info[..colon_pos];
+                let host_and_rest = &after_proto[at_pos..];
+                let prefix = &arg[..proto_pos + 3];
+                return format!("{prefix}{user}:***{host_and_rest}");
+            }
+        }
+    }
+    if arg.to_ascii_lowercase().contains("bearer ") {
+        let parts: Vec<&str> = arg.splitn(2, "earer ").collect();
+        if parts.len() == 2 {
+            return format!("{}earer ***", parts[0]);
+        }
+    }
+    arg.to_string()
+}
+
 impl OperationLog {
     pub fn record(
         &self,
@@ -37,6 +59,7 @@ impl OperationLog {
         duration: Duration,
         write: bool,
     ) {
+        let sanitized_args = args.into_iter().map(|a| sanitize_arg(&a)).collect();
         let timestamp_unix_ms = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
@@ -47,7 +70,7 @@ impl OperationLog {
         }
         entries.push_back(LogEntry {
             repo_root,
-            args,
+            args: sanitized_args,
             exit_status,
             duration_ms: duration.as_millis(),
             timestamp_unix_ms,
@@ -79,5 +102,39 @@ impl OperationLog {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_credentials_sanitized_in_log() {
+        let log = OperationLog::default();
+        log.record(
+            PathBuf::from("/test/repo"),
+            vec![
+                "push".into(),
+                "https://user:super_secret_token@github.com/org/repo.git".into(),
+                "main".into(),
+                "-c".into(),
+                "http.extraHeader=Authorization: Bearer my-secret-jwt".into(),
+            ],
+            0,
+            Duration::from_millis(42),
+            true,
+        );
+
+        let entries = log.snapshot();
+        assert_eq!(entries.len(), 1);
+        let args = &entries[0].args;
+        assert_eq!(args[0], "push");
+        assert_eq!(args[1], "https://user:***@github.com/org/repo.git");
+        assert_eq!(args[2], "main");
+        assert_eq!(args[3], "-c");
+        assert_eq!(args[4], "http.extraHeader=Authorization: Bearer ***");
+        assert!(!format!("{:?}", entries).contains("super_secret_token"));
+        assert!(!format!("{:?}", entries).contains("my-secret-jwt"));
     }
 }

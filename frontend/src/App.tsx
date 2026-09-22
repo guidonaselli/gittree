@@ -26,15 +26,22 @@ import {
   startWatching,
   stopWatching,
   unstageWorkingCopyPaths,
+  cancelSyncNetworkOperation,
+  submitAskpassResponse,
+  cancelAskpassResponse,
   type HistoryScope,
 } from "./api/commands";
-import { onDesktopThemeChanged, onRepositoryChanged, onWatchDegraded } from "./api/events";
-import { isKnown, type Bookmark, type RepositoryState, type Resolved, type SubmoduleState, type WorkingCopyStatus } from "./api/types";
+import { onDesktopThemeChanged, onRepositoryChanged, onWatchDegraded, onAskpassPrompt } from "./api/events";
+import { branchLabel, isKnown, type AskpassPromptPayload, type Bookmark, type RepositoryState, type Resolved, type SubmoduleState, type WorkingCopyStatus } from "./api/types";
 import { WorkingCopyView } from "./features/working-copy/WorkingCopyView";
 import { HistoryView } from "./features/history/HistoryView";
 import { BranchesView } from "./features/branches/BranchesView";
 import { TagsView } from "./features/tags/TagsView";
 import { StashesView } from "./features/stashes/StashesView";
+import { FetchModal } from "./features/sync/FetchModal";
+import { PullModal } from "./features/sync/PullModal";
+import { PushModal } from "./features/sync/PushModal";
+import { AskpassModal } from "./features/sync/AskpassModal";
 import { PALETTE_TOKENS, resolveTheme } from "./theme/apply-palette";
 import { OperationLogView } from "./features/operation-log/OperationLogView";
 import { RepositoryStatus } from "./features/repository/RepositoryStatus";
@@ -90,6 +97,11 @@ export const App: Component = () => {
   const [hookOutput, setHookOutput] = createSignal<string | null>(null);
   const [offerInitAt, setOfferInitAt] = createSignal<string | null>(null);
   const [watchDegraded, setWatchDegraded] = createSignal<Record<string, string>>({});
+  const [showFetchModal, setShowFetchModal] = createSignal(false);
+  const [showPullModal, setShowPullModal] = createSignal(false);
+  const [showPushModal, setShowPushModal] = createSignal(false);
+  const [isSyncing, setIsSyncing] = createSignal(false);
+  const [askpassPrompt, setAskpassPrompt] = createSignal<AskpassPromptPayload | null>(null);
   let pathInputEl: HTMLInputElement | undefined;
   function setPathInputEl(el: HTMLInputElement) {
     pathInputEl = el;
@@ -318,6 +330,7 @@ export const App: Component = () => {
 
   let unlistenChanged: (() => void) | undefined;
   let unlistenDegraded: (() => void) | undefined;
+  let unlistenAskpass: (() => void) | undefined;
   onRepositoryChanged((root) => {
     invalidate(root);
     refetchOperationLog();
@@ -325,10 +338,38 @@ export const App: Component = () => {
   onWatchDegraded((info) => {
     setWatchDegraded((prev) => ({ ...prev, [info.root]: info.reason }));
   }).then((un) => (unlistenDegraded = un));
+  onAskpassPrompt((payload) => {
+    setAskpassPrompt(payload);
+  }).then((un) => (unlistenAskpass = un));
   onCleanup(() => {
     unlistenChanged?.();
     unlistenDegraded?.();
+    unlistenAskpass?.();
   });
+
+  async function handleAskpassSubmit(id: string, response: string) {
+    try {
+      await submitAskpassResponse(id, response);
+    } finally {
+      setAskpassPrompt(null);
+    }
+  }
+
+  async function handleAskpassCancel(id: string) {
+    try {
+      await cancelAskpassResponse(id);
+    } finally {
+      setAskpassPrompt(null);
+    }
+  }
+
+  async function handleCancelSync() {
+    try {
+      await cancelSyncNetworkOperation();
+    } finally {
+      setIsSyncing(false);
+    }
+  }
 
   onMount(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -556,6 +597,11 @@ export const App: Component = () => {
                   onOpenBranches={() => setMainView("branches")}
                   onOpenTags={() => setMainView("tags")}
                   onOpenStashes={() => setMainView("stashes")}
+                  onOpenFetch={() => setShowFetchModal(true)}
+                  onOpenPull={() => setShowPullModal(true)}
+                  onOpenPush={() => setShowPushModal(true)}
+                  isSyncing={isSyncing()}
+                  onCancelSync={handleCancelSync}
                 />
               )}
             </Show>
@@ -714,6 +760,48 @@ export const App: Component = () => {
               setConflictMarkerRefusal(null);
               await stagePaths(pathsToStage, true);
             }}
+          />
+        )}
+      </Show>
+
+      <Show when={showFetchModal() && activeViewPath()}>
+        <FetchModal
+          root={activeViewPath()!}
+          onClose={() => setShowFetchModal(false)}
+          onSuccess={() => invalidate(activeViewPath()!)}
+        />
+      </Show>
+
+      <Show when={showPullModal() && activeViewPath()}>
+        <PullModal
+          root={activeViewPath()!}
+          currentBranch={repoState()?.branch ? branchLabel(repoState()!.branch) : undefined}
+          onClose={() => setShowPullModal(false)}
+          onSuccess={() => invalidate(activeViewPath()!)}
+          onConflict={() => {
+            setShowPullModal(false);
+            setMainView("working-copy");
+            invalidate(activeViewPath()!);
+          }}
+        />
+      </Show>
+
+      <Show when={showPushModal() && activeViewPath()}>
+        <PushModal
+          root={activeViewPath()!}
+          currentBranch={repoState()?.branch ? branchLabel(repoState()!.branch) : undefined}
+          onClose={() => setShowPushModal(false)}
+          onSuccess={() => invalidate(activeViewPath()!)}
+          onOpenPull={() => setShowPullModal(true)}
+        />
+      </Show>
+
+      <Show when={askpassPrompt()}>
+        {(prompt) => (
+          <AskpassModal
+            prompt={prompt()}
+            onSubmit={handleAskpassSubmit}
+            onCancel={handleAskpassCancel}
           />
         )}
       </Show>

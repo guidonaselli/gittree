@@ -12,3 +12,11 @@ export function onWatchDegraded(handler: (info: { root: string; reason: string }
 export function onDesktopThemeChanged(handler: () => void): Promise<UnlistenFn> {
   return listen<void>("desktop-theme:changed", () => handler());
 }
+
+export function onAskpassPrompt(
+  handler: (payload: import("./types").AskpassPromptPayload) => void
+): Promise<UnlistenFn> {
+  return listen<import("./types").AskpassPromptPayload>("askpass:prompt", (event) =>
+    handler(event.payload)
+  );
+}

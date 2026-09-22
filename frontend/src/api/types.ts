@@ -534,4 +534,106 @@ export type StageOutcome =
   | { status: "success" }
   | { status: "marker_refusal"; file: string; marker_lines: number[]; preview_lines: string[] };
 
+export interface RemoteInfo {
+  name: string;
+  fetch_url?: string | null;
+  push_url?: string | null;
+}
+
+export type PushForceMode =
+  | { mode: "none" }
+  | { mode: "force_with_lease" }
+  | { mode: "bare_force"; acknowledged_destructive: boolean };
+
+export interface PushOptions {
+  remote: string;
+  refspec?: string | null;
+  force_mode: PushForceMode;
+  tags: boolean;
+  set_upstream: boolean;
+}
+
+export type PushOutcome =
+  | {
+      status: "success";
+      summary: string;
+      details: string;
+    }
+  | {
+      status: "rejected_non_fast_forward";
+      remote_message: string;
+      suggest_pull: boolean;
+    }
+  | {
+      status: "cancelled";
+      summary: string;
+    }
+  | {
+      status: "failed";
+      message: string;
+    };
+
+export type PullStrategy = "merge" | "rebase" | "fast_forward_only";
+
+export interface PullOptions {
+  remote: string;
+  branch?: string | null;
+  strategy: PullStrategy;
+  prune: boolean;
+  tags: boolean;
+}
+
+export type PullOutcome =
+  | {
+      status: "success";
+      summary: string;
+    }
+  | {
+      status: "conflict";
+      conflicting_files: string[];
+      summary: string;
+    }
+  | {
+      status: "cancelled";
+      summary: string;
+    }
+  | {
+      status: "failed";
+      message: string;
+    };
+
+export interface FetchOptions {
+  remote?: string | null;
+  prune: boolean;
+  tags: boolean;
+  refspec?: string | null;
+}
+
+export interface RemoteFetchOutcome {
+  remote: string;
+  success: boolean;
+  summary: string;
+  error?: string | null;
+}
+
+export interface MultiRemoteFetchResult {
+  total: number;
+  succeeded: number;
+  failed: number;
+  results: RemoteFetchOutcome[];
+}
+
+export type AskpassPromptType =
+  | "host_key"
+  | "passphrase"
+  | "username"
+  | "two_factor"
+  | "password";
+
+export interface AskpassPromptPayload {
+  id: string;
+  prompt: string;
+  prompt_type: AskpassPromptType;
+}
+
 
