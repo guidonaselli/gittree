@@ -175,27 +175,31 @@ impl ProcessLayer {
         match result {
             Ok(output) => {
                 let status = output.status.code().unwrap_or(-1);
+                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
                 self.log.record(
                     call.repo_root.clone(),
                     call.args.clone(),
                     status,
                     duration,
                     intent == Intent::Write,
+                    stderr.clone(),
                 );
                 Ok(GitResult {
                     status,
                     stdout: output.stdout,
-                    stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+                    stderr,
                     duration,
                 })
             }
             Err(err) => {
+                let err_str = err.to_string();
                 self.log.record(
                     call.repo_root.clone(),
                     call.args.clone(),
                     -1,
                     duration,
                     intent == Intent::Write,
+                    err_str,
                 );
                 Err(err)
             }
@@ -282,5 +286,36 @@ mod tests {
         let call = GitCall::new(".", ["--version"]);
         let result = layer.run(call, Intent::Read, token).await;
         assert!(matches!(result, Err(GitError::Cancelled)));
+    }
+
+    #[tokio::test]
+    async fn test_no_non_zero_exit_is_ever_reported_as_success() {
+        let layer = ProcessLayer::new(2, Duration::from_secs(5));
+        // A git command that fails with non-zero exit
+        let call = GitCall::new(".", ["log", "nonexistent-ref-surely-missing-4242"]);
+        let result = layer
+            .run(call, Intent::Read, CancellationToken::new())
+            .await
+            .expect("process layer returned error instead of GitResult");
+
+        // Assert: no non-zero exit is reported as ok() or success
+        assert!(!result.ok(), "A non-zero exit status must NEVER be reported as ok()");
+        assert_ne!(result.status, 0, "Exit status must be non-zero");
+        assert!(
+            !result.stderr.is_empty(),
+            "Stderr must not be empty on command failure"
+        );
+        assert!(
+            result.stderr.to_lowercase().contains("fatal")
+                || result.stderr.to_lowercase().contains("error"),
+            "Stderr must expose the verbatim git error message"
+        );
+
+        // Verify operation log recorded verbatim args, exit status and stderr
+        let snapshot = layer.log.snapshot();
+        let last = snapshot.last().expect("must have logged entry");
+        assert_eq!(last.args, vec!["log", "nonexistent-ref-surely-missing-4242"]);
+        assert_eq!(last.exit_status, result.status);
+        assert_eq!(last.stderr, result.stderr);
     }
 }

@@ -2,6 +2,7 @@ import { createSignal, createResource, Show, For, type Component } from "solid-j
 import { getRemotes, pushRepository, cancelSyncNetworkOperation } from "../../api/commands";
 import type { PushForceMode, PushOptions, RemoteInfo, PushOutcome } from "../../api/types";
 import { PushRejectedModal } from "./PushRejectedModal";
+import { useModalEscape } from "../../layout/modal-escape";
 import "./sync.css";
 
 export interface PushModalProps {
@@ -13,6 +14,7 @@ export interface PushModalProps {
 }
 
 export const PushModal: Component<PushModalProps> = (props) => {
+  useModalEscape(props.onClose);
   const [remotes] = createResource(() => props.root, getRemotes);
   const [selectedRemote, setSelectedRemote] = createSignal<string>("origin");
   const [refspec, setRefspec] = createSignal<string>(props.currentBranch ?? "");

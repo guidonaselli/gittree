@@ -1,4 +1,5 @@
 import type { Component } from "solid-js";
+import { useModalEscape } from "../../layout/modal-escape";
 import "./integration.css";
 
 export interface AbortConfirmationModalProps {
@@ -9,6 +10,7 @@ export interface AbortConfirmationModalProps {
 }
 
 export const AbortConfirmationModal: Component<AbortConfirmationModalProps> = (props) => {
+  useModalEscape(props.onClose);
   return (
     <div class="integration-modal-overlay">
       <div class="integration-modal-card">

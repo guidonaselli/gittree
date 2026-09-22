@@ -1,6 +1,7 @@
 import { createSignal, createResource, Show, For, type Component } from "solid-js";
 import { getRemotes, fetchRemotes, cancelSyncNetworkOperation } from "../../api/commands";
 import type { MultiRemoteFetchResult, RemoteInfo } from "../../api/types";
+import { useModalEscape } from "../../layout/modal-escape";
 import "./sync.css";
 
 export interface FetchModalProps {
@@ -10,6 +11,7 @@ export interface FetchModalProps {
 }
 
 export const FetchModal: Component<FetchModalProps> = (props) => {
+  useModalEscape(props.onClose);
   const [remotes] = createResource(() => props.root, getRemotes);
   const [selectedRemote, setSelectedRemote] = createSignal<string>("all");
   const [prune, setPrune] = createSignal<boolean>(true);

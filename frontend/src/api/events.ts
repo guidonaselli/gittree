@@ -13,6 +13,10 @@ export function onDesktopThemeChanged(handler: () => void): Promise<UnlistenFn> 
   return listen<void>("desktop-theme:changed", () => handler());
 }
 
+export function onUserThemesChanged(handler: () => void): Promise<UnlistenFn> {
+  return listen<void>("user-themes:changed", () => handler());
+}
+
 export function onAskpassPrompt(
   handler: (payload: import("./types").AskpassPromptPayload) => void
 ): Promise<UnlistenFn> {

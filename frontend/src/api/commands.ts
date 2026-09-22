@@ -43,6 +43,7 @@ import type {
   RepositoryState,
   Resolved,
   RevertOptions,
+  UserThemesResult,
   RevertOutcome,
   Settings,
   SettingsLoadResult,
@@ -800,6 +801,14 @@ export function resetToReflog(
   options: ResetReflogOptions
 ): Promise<ResetOutcome> {
   return invoke<ResetOutcome>("reset_to_reflog", { root, options });
+}
+
+export function getUserThemes(): Promise<UserThemesResult> {
+  return invoke<UserThemesResult>("get_user_themes");
+}
+
+export function getUserThemesDir(): Promise<string> {
+  return invoke<string>("get_user_themes_dir");
 }
 
 

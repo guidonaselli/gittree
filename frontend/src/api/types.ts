@@ -15,6 +15,7 @@ export type LogEntry = {
   duration_ms: number;
   timestamp_unix_ms: number;
   write: boolean;
+  stderr?: string;
 };
 
 export type DesktopPalette = { mode: string; tokens: Record<string, string> };
@@ -858,3 +859,24 @@ export type BumpGitlinkOutcome =
       relative_path: string;
       error: string;
     };
+
+export interface UserThemeInfo {
+  id: string;
+  name: string;
+  mode: "light" | "dark";
+  path: string;
+  tokens: Record<string, string>;
+}
+
+export interface UserThemeParseError {
+  file: string;
+  line: number | null;
+  message: string;
+}
+
+export interface UserThemesResult {
+  themes_dir: string;
+  themes: UserThemeInfo[];
+  errors: UserThemeParseError[];
+}
+

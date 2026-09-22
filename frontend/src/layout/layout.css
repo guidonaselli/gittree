@@ -100,6 +100,21 @@
   border-bottom: var(--border-width-thin) solid var(--color-border);
 }
 
+.user-theme-error-banner {
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+  border-bottom: var(--border-width-thin) solid var(--color-border);
+  font-size: var(--font-size-xs);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.user-theme-error-item {
+  margin-right: var(--space-2);
+}
+
 .bookmark-group {
   margin-top: var(--space-3);
 }

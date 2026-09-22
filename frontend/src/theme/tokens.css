@@ -28,7 +28,7 @@
   --color-focus-ring: #2b6cb0;
 
   /* Semantic state — always paired with a non-color signal (icon/shape/text) */
-  --color-success: #1a7f43;
+  --color-success: #15733b;
   --color-success-bg: #e6f4ea;
   --color-warning: #8a5a00;
   --color-warning-bg: #fff3d6;
@@ -41,7 +41,7 @@
 
   /* Diff-specific tokens (history-and-diff) */
   --color-diff-add-bg: #e6f4ea;
-  --color-diff-add-text: #1a7f43;
+  --color-diff-add-text: #15733b;
   --color-diff-del-bg: #fbe9e7;
   --color-diff-del-text: #b3261e;
   --color-diff-context-text: #565d66;

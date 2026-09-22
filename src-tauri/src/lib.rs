@@ -1,6 +1,7 @@
 mod askpass;
 mod desktop_theme;
 mod settings;
+mod user_themes;
 mod watcher;
 
 use std::path::PathBuf;
@@ -813,6 +814,19 @@ fn get_desktop_palette() -> Result<Option<DesktopPalette>, String> {
 }
 
 #[tauri::command]
+fn get_user_themes() -> Result<user_themes::UserThemesResult, String> {
+    let dir = user_themes::default_user_themes_dir();
+    Ok(user_themes::load_user_themes(&dir))
+}
+
+#[tauri::command]
+fn get_user_themes_dir() -> Result<String, String> {
+    Ok(user_themes::default_user_themes_dir()
+        .to_string_lossy()
+        .to_string())
+}
+
+#[tauri::command]
 async fn get_branches(
     state: State<'_, AppState>,
     root: String,
@@ -1447,6 +1461,8 @@ pub fn run() {
             cancel_askpass_response,
             get_reflog,
             reset_to_reflog,
+            get_user_themes,
+            get_user_themes_dir,
         ])
         .setup(|app| {
             let askpass_server = match askpass::AskpassServer::start(app.handle().clone()) {
@@ -1466,6 +1482,13 @@ pub fn run() {
             let watch_dir = desktop_theme::published_theme_watch_dir();
             let handle = watcher::start_desktop_theme_watch(app.handle().clone(), watch_dir);
             app.manage(std::sync::Mutex::new(handle));
+
+            let user_themes_dir = user_themes::default_user_themes_dir();
+            let user_themes_handle =
+                watcher::start_user_themes_watch(app.handle().clone(), user_themes_dir);
+            if let Some(h) = user_themes_handle {
+                let _ = app.manage(std::sync::Mutex::new(h));
+            }
             Ok(())
         })
         .on_window_event(|window, event| {

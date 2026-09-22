@@ -12,6 +12,7 @@ pub struct LogEntry {
     pub duration_ms: u128,
     pub timestamp_unix_ms: u128,
     pub write: bool,
+    pub stderr: String,
 }
 
 const MAX_ENTRIES: usize = 2000;
@@ -58,6 +59,7 @@ impl OperationLog {
         exit_status: i32,
         duration: Duration,
         write: bool,
+        stderr: String,
     ) {
         let sanitized_args = args.into_iter().map(|a| sanitize_arg(&a)).collect();
         let timestamp_unix_ms = SystemTime::now()
@@ -75,6 +77,7 @@ impl OperationLog {
             duration_ms: duration.as_millis(),
             timestamp_unix_ms,
             write,
+            stderr,
         });
     }
 
@@ -124,6 +127,7 @@ mod tests {
             0,
             Duration::from_millis(42),
             true,
+            String::new(),
         );
 
         let entries = log.snapshot();

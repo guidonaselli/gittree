@@ -1,5 +1,6 @@
 import { createSignal, onMount, Show, type Component } from "solid-js";
 import type { AskpassPromptPayload } from "../../api/types";
+import { useModalEscape } from "../../layout/modal-escape";
 import "./sync.css";
 
 export interface AskpassModalProps {
@@ -9,6 +10,7 @@ export interface AskpassModalProps {
 }
 
 export const AskpassModal: Component<AskpassModalProps> = (props) => {
+  useModalEscape(() => props.onCancel(props.prompt.id));
   const [response, setResponse] = createSignal("");
   const [showSecret, setShowSecret] = createSignal(false);
   let inputEl: HTMLInputElement | undefined;

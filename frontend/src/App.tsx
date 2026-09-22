@@ -1,4 +1,4 @@
-import { type Component, For, Show, createEffect, createResource, createSignal, onCleanup, onMount } from "solid-js";
+import { type Component, For, Show, createEffect, createMemo, createResource, createSignal, onCleanup, onMount } from "solid-js";
 import {
   addBookmark,
   amendWorkingCopy,
@@ -29,9 +29,10 @@ import {
   cancelSyncNetworkOperation,
   submitAskpassResponse,
   cancelAskpassResponse,
+  getUserThemes,
   type HistoryScope,
 } from "./api/commands";
-import { onDesktopThemeChanged, onRepositoryChanged, onWatchDegraded, onAskpassPrompt } from "./api/events";
+import { onDesktopThemeChanged, onUserThemesChanged, onRepositoryChanged, onWatchDegraded, onAskpassPrompt } from "./api/events";
 import { branchLabel, isKnown, type AskpassPromptPayload, type Bookmark, type RepositoryState, type Resolved, type SubmoduleMatrixResult, type WorkingCopyStatus } from "./api/types";
 import { WorkingCopyView } from "./features/working-copy/WorkingCopyView";
 import { HistoryView } from "./features/history/HistoryView";
@@ -49,6 +50,15 @@ import { RepositoryStatus } from "./features/repository/RepositoryStatus";
 import { SubmoduleMatrix } from "./features/submodules/SubmoduleMatrix";
 import { ActiveOperationBanner } from "./features/integration/ActiveOperationBanner";
 import { ConflictMarkerGuardModal } from "./features/conflicts/ConflictMarkerGuardModal";
+import { CommandPalette, type CommandPaletteItem } from "./features/command-palette/CommandPalette";
+import { KeybindingsModal } from "./keybindings/KeybindingsModal";
+import { CommandErrorModal } from "./features/command-error/CommandErrorModal";
+import {
+  getEffectiveShortcut,
+  loadCustomBindings,
+  matchesEvent,
+  saveCustomBindings,
+} from "./keybindings/keybindings";
 import {
   useDetailPanelCollapsed,
   useDetailPanelWidth,
@@ -102,6 +112,21 @@ export const App: Component = () => {
   const [showFetchModal, setShowFetchModal] = createSignal(false);
   const [showPullModal, setShowPullModal] = createSignal(false);
   const [showPushModal, setShowPushModal] = createSignal(false);
+  const [showCommandPalette, setShowCommandPalette] = createSignal(false);
+  const [showKeybindingsModal, setShowKeybindingsModal] = createSignal(false);
+  const [customKeybindings, setCustomKeybindings] = createSignal<Record<string, string>>(loadCustomBindings());
+  const [activeCommandError, setActiveCommandError] = createSignal<{
+    title?: string;
+    command?: string;
+    exitStatus?: number;
+    stderr: string;
+  } | null>(null);
+
+  function handleSaveBindings(bindings: Record<string, string>) {
+    setCustomKeybindings(bindings);
+    saveCustomBindings(bindings);
+  }
+
   const [isSyncing, setIsSyncing] = createSignal(false);
   const [askpassPrompt, setAskpassPrompt] = createSignal<AskpassPromptPayload | null>(null);
   let pathInputEl: HTMLInputElement | undefined;
@@ -305,10 +330,15 @@ export const App: Component = () => {
   });
 
   const [desktopPalette, { refetch: refetchDesktopPalette }] = createResource(getDesktopPalette);
+  const [userThemesResult, { refetch: refetchUserThemes }] = createResource(getUserThemes);
 
   function applyTheme(explicit: string | null | undefined) {
     const root = document.documentElement;
-    const { dataTheme, tokens } = resolveTheme(explicit, desktopPalette() ?? undefined);
+    const { dataTheme, tokens } = resolveTheme(
+      explicit,
+      desktopPalette() ?? undefined,
+      userThemesResult()?.themes,
+    );
     for (const token of PALETTE_TOKENS) root.style.removeProperty(token);
     if (dataTheme) root.dataset.theme = dataTheme;
     else delete root.dataset.theme;
@@ -322,6 +352,16 @@ export const App: Component = () => {
   });
 
   onDesktopThemeChanged(() => refetchDesktopPalette());
+  onUserThemesChanged(() => refetchUserThemes());
+
+  onMount(() => {
+    if (typeof window !== "undefined" && window.matchMedia) {
+      const mq = window.matchMedia("(prefers-color-scheme: dark)");
+      const onChange = () => applyTheme(settingsResult()?.settings.theme);
+      mq.addEventListener("change", onChange);
+      onCleanup(() => mq.removeEventListener("change", onChange));
+    }
+  });
 
   async function setTheme(theme: string) {
     const current = settingsResult()?.settings ?? { concurrency: 8, theme: null };
@@ -375,11 +415,64 @@ export const App: Component = () => {
 
   onMount(() => {
     function onKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      const isInput =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
+
+      const bindings = customKeybindings();
+      const getShortcut = (id: string) => getEffectiveShortcut(id, bindings);
+
+      if (matchesEvent(getShortcut("command-palette"), e)) {
+        e.preventDefault();
+        setShowCommandPalette((prev) => !prev);
+        return;
+      }
+
+      if (showCommandPalette() || showKeybindingsModal()) return;
+
       const groupId = workspace.activeGroup()?.id;
-      if (!groupId) return;
-      if (e.ctrlKey && e.key === "Tab") {
+      if (groupId && e.ctrlKey && e.key === "Tab") {
         e.preventDefault();
         workspace.cycleTab(groupId, e.shiftKey ? -1 : 1);
+        return;
+      }
+
+      if (isInput) return;
+
+      if (matchesEvent(getShortcut("view-working-copy"), e)) {
+        e.preventDefault();
+        setMainView("working-copy");
+      } else if (matchesEvent(getShortcut("view-history"), e)) {
+        e.preventDefault();
+        setMainView("history");
+      } else if (matchesEvent(getShortcut("view-branches"), e)) {
+        e.preventDefault();
+        setMainView("branches");
+      } else if (matchesEvent(getShortcut("view-tags"), e)) {
+        e.preventDefault();
+        setMainView("tags");
+      } else if (matchesEvent(getShortcut("view-stashes"), e)) {
+        e.preventDefault();
+        setMainView("stashes");
+      } else if (matchesEvent(getShortcut("view-reflog"), e)) {
+        e.preventDefault();
+        setReflogTargetRef("HEAD");
+        setMainView("reflog");
+      } else if (matchesEvent(getShortcut("fetch"), e)) {
+        e.preventDefault();
+        if (activeViewPath()) setShowFetchModal(true);
+      } else if (matchesEvent(getShortcut("pull"), e)) {
+        e.preventDefault();
+        if (activeViewPath()) setShowPullModal(true);
+      } else if (matchesEvent(getShortcut("push"), e)) {
+        e.preventDefault();
+        if (activeViewPath()) setShowPushModal(true);
+      } else if (matchesEvent(getShortcut("refresh-state"), e)) {
+        e.preventDefault();
+        refreshAll();
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -464,13 +557,246 @@ export const App: Component = () => {
     } catch (_) {}
   }
 
+  const commandPaletteItems = createMemo<CommandPaletteItem[]>(() => {
+    const items: CommandPaletteItem[] = [];
+    const bindings = customKeybindings();
+    const getShortcut = (id: string) => getEffectiveShortcut(id, bindings);
+    const activePath = activeViewPath();
+    const hasActiveRepo = !!activePath;
+
+    // Navigation
+    items.push({
+      id: "nav-working-copy",
+      title: "Go to Working Copy",
+      category: "Navigation",
+      shortcut: getShortcut("view-working-copy"),
+      available: hasActiveRepo,
+      unavailableReason: hasActiveRepo ? undefined : "No active repository open",
+      onExecute: () => setMainView("working-copy"),
+    });
+    items.push({
+      id: "nav-history",
+      title: "Go to History",
+      category: "Navigation",
+      shortcut: getShortcut("view-history"),
+      available: hasActiveRepo,
+      unavailableReason: hasActiveRepo ? undefined : "No active repository open",
+      onExecute: () => setMainView("history"),
+    });
+    items.push({
+      id: "nav-branches",
+      title: "Go to Branches",
+      category: "Navigation",
+      shortcut: getShortcut("view-branches"),
+      available: hasActiveRepo,
+      unavailableReason: hasActiveRepo ? undefined : "No active repository open",
+      onExecute: () => setMainView("branches"),
+    });
+    items.push({
+      id: "nav-tags",
+      title: "Go to Tags",
+      category: "Navigation",
+      shortcut: getShortcut("view-tags"),
+      available: hasActiveRepo,
+      unavailableReason: hasActiveRepo ? undefined : "No active repository open",
+      onExecute: () => setMainView("tags"),
+    });
+    items.push({
+      id: "nav-stashes",
+      title: "Go to Stashes",
+      category: "Navigation",
+      shortcut: getShortcut("view-stashes"),
+      available: hasActiveRepo,
+      unavailableReason: hasActiveRepo ? undefined : "No active repository open",
+      onExecute: () => setMainView("stashes"),
+    });
+    items.push({
+      id: "nav-reflog",
+      title: "Go to Reflog",
+      category: "Navigation",
+      shortcut: getShortcut("view-reflog"),
+      available: hasActiveRepo,
+      unavailableReason: hasActiveRepo ? undefined : "No active repository open",
+      onExecute: () => {
+        setReflogTargetRef("HEAD");
+        setMainView("reflog");
+      },
+    });
+
+    // Sync
+    items.push({
+      id: "sync-fetch",
+      title: "Fetch Remotes",
+      category: "Sync",
+      shortcut: getShortcut("fetch"),
+      available: hasActiveRepo,
+      unavailableReason: hasActiveRepo ? undefined : "No active repository open",
+      onExecute: () => setShowFetchModal(true),
+    });
+    items.push({
+      id: "sync-pull",
+      title: "Pull from Upstream",
+      category: "Sync",
+      shortcut: getShortcut("pull"),
+      available: hasActiveRepo,
+      unavailableReason: hasActiveRepo ? undefined : "No active repository open",
+      onExecute: () => setShowPullModal(true),
+    });
+    items.push({
+      id: "sync-push",
+      title: "Push to Remote",
+      category: "Sync",
+      shortcut: getShortcut("push"),
+      available: hasActiveRepo,
+      unavailableReason: hasActiveRepo ? undefined : "No active repository open",
+      onExecute: () => setShowPushModal(true),
+    });
+
+    // Working Copy
+    const wc = workingCopy();
+    const hasStaged =
+      wc &&
+      isKnown(wc) &&
+      wc.value.changed.some((e) => e.staged !== "Unmodified");
+    const hasUnstaged =
+      wc &&
+      isKnown(wc) &&
+      (wc.value.changed.some((e) => e.unstaged !== "Unmodified") ||
+        wc.value.untracked.length > 0);
+
+    items.push({
+      id: "wc-stage-all",
+      title: "Stage All Changes",
+      category: "Working Copy",
+      shortcut: getShortcut("stage-all"),
+      available: hasActiveRepo && !!hasUnstaged,
+      unavailableReason: !hasActiveRepo
+        ? "No active repository open"
+        : !hasUnstaged
+        ? "No unstaged changes"
+        : undefined,
+      onExecute: () => {
+        if (wc && isKnown(wc)) {
+          const unstagedPaths = wc.value.changed
+            .filter((e) => e.unstaged !== "Unmodified")
+            .map((e) => e.path);
+          const allPaths = [...unstagedPaths, ...wc.value.untracked];
+          void stagePaths(allPaths);
+        }
+      },
+    });
+    items.push({
+      id: "wc-unstage-all",
+      title: "Unstage All Changes",
+      category: "Working Copy",
+      available: hasActiveRepo && !!hasStaged,
+      unavailableReason: !hasActiveRepo
+        ? "No active repository open"
+        : !hasStaged
+        ? "No staged changes"
+        : undefined,
+      onExecute: () => {
+        if (wc && isKnown(wc)) {
+          const stagedPaths = wc.value.changed
+            .filter((e) => e.staged !== "Unmodified")
+            .map((e) => e.path);
+          void unstagePaths(stagedPaths);
+        }
+      },
+    });
+    items.push({
+      id: "wc-discard-all",
+      title: "Discard All Changes",
+      category: "Working Copy",
+      shortcut: getShortcut("discard-all"),
+      isDestructive: true,
+      available: hasActiveRepo && !!hasUnstaged,
+      unavailableReason: !hasActiveRepo
+        ? "No active repository open"
+        : !hasUnstaged
+        ? "No unstaged changes"
+        : undefined,
+      onExecute: () => {
+        setMainView("working-copy");
+      },
+    });
+
+    // Repositories
+    for (const b of bookmarks() ?? []) {
+      items.push({
+        id: `repo-bookmark-${b.root}`,
+        title: `Open Repository: ${b.root}`,
+        category: "Repositories",
+        available: true,
+        onExecute: () => activateRoot(b.root),
+      });
+    }
+
+    for (const g of workspace.state().groups) {
+      if (!bookmarks()?.some((b) => b.root === g.rootPath)) {
+        items.push({
+          id: `repo-group-${g.id}`,
+          title: `Switch to Group: ${g.rootPath}`,
+          category: "Repositories",
+          available: true,
+          onExecute: () => workspace.setActiveGroup(g.id),
+        });
+      }
+    }
+
+    // General
+    items.push({
+      id: "general-refresh",
+      title: "Refresh Repository State",
+      category: "General",
+      shortcut: getShortcut("refresh-state"),
+      available: hasActiveRepo,
+      unavailableReason: hasActiveRepo ? undefined : "No active repository open",
+      onExecute: refreshAll,
+    });
+    items.push({
+      id: "general-shortcuts",
+      title: "Keyboard Shortcuts",
+      category: "General",
+      available: true,
+      onExecute: () => setShowKeybindingsModal(true),
+    });
+    items.push({
+      id: "general-toggle-detail",
+      title: detailCollapsed() ? "Show Detail Panel" : "Hide Detail Panel",
+      category: "General",
+      available: true,
+      onExecute: () => setDetailCollapsed(!detailCollapsed()),
+    });
+
+    return items;
+  });
+
   return (
     <div class="app-shell">
-      <div class="app-titlebar">
+      <header class="app-titlebar" role="banner">
         <div class="app-title-brand">
           <img src="/logo.png" alt="GitTree" class="app-title-logo" />
           <span>GitTree</span>
         </div>
+        <button
+          type="button"
+          class="collapse-toggle"
+          onClick={() => setShowCommandPalette(true)}
+          title="Command Palette (Ctrl+K)"
+          aria-label="Command Palette"
+        >
+          🔍 Command Palette
+        </button>
+        <button
+          type="button"
+          class="collapse-toggle"
+          onClick={() => setShowKeybindingsModal(true)}
+          title="Keyboard Shortcuts"
+          aria-label="Keyboard Shortcuts"
+        >
+          ⌨ Shortcuts
+        </button>
         <Show when={workspace.activeGroup()}>
           <button class="collapse-toggle" onClick={refreshAll}>
             Refresh
@@ -492,12 +818,32 @@ export const App: Component = () => {
             value={settingsResult()?.settings.theme ?? "system"}
             onChange={(e) => void setTheme(e.currentTarget.value)}
           >
-            <option value="system">System</option>
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
+            <option value="system">Follow Desktop</option>
+            <option value="light">Light (Built-in)</option>
+            <option value="dark">Dark (Built-in)</option>
+            <Show when={(userThemesResult()?.themes.length ?? 0) > 0}>
+              <optgroup label="User Themes">
+                <For each={userThemesResult()?.themes}>
+                  {(t) => <option value={t.id}>{t.name}</option>}
+                </For>
+              </optgroup>
+            </Show>
           </select>
         </label>
-      </div>
+      </header>
+
+      <Show when={(userThemesResult()?.errors.length ?? 0) > 0}>
+        <div class="user-theme-error-banner" role="alert">
+          <span>⚠️ Theme error:</span>
+          <For each={userThemesResult()?.errors}>
+            {(err) => (
+              <span class="user-theme-error-item">
+                {err.file}{err.line ? `:${err.line}` : ""}: {err.message}
+              </span>
+            )}
+          </For>
+        </div>
+      </Show>
 
       <Show when={workspace.state().groups.length > 0}>
         <GroupSwitcher
@@ -842,6 +1188,32 @@ export const App: Component = () => {
             prompt={prompt()}
             onSubmit={handleAskpassSubmit}
             onCancel={handleAskpassCancel}
+          />
+        )}
+      </Show>
+
+      <CommandPalette
+        open={showCommandPalette()}
+        onClose={() => setShowCommandPalette(false)}
+        items={commandPaletteItems()}
+      />
+
+      <KeybindingsModal
+        open={showKeybindingsModal()}
+        onClose={() => setShowKeybindingsModal(false)}
+        customBindings={customKeybindings()}
+        onSaveBindings={handleSaveBindings}
+      />
+
+      <Show when={activeCommandError()}>
+        {(err) => (
+          <CommandErrorModal
+            open={true}
+            title={err().title}
+            command={err().command}
+            exitStatus={err().exitStatus}
+            stderr={err().stderr}
+            onClose={() => setActiveCommandError(null)}
           />
         )}
       </Show>

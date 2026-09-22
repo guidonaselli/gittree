@@ -1,5 +1,6 @@
 import type { Component } from "solid-js";
 import type { DirtyTreeDetails } from "../../api/types";
+import { useModalEscape } from "../../layout/modal-escape";
 import "./integration.css";
 
 export interface DirtyTreeRefusalModalProps {
@@ -16,6 +17,7 @@ export const DirtyTreeRefusalModal: Component<DirtyTreeRefusalModalProps> = (pro
     props.onClose?.();
     props.onCancel?.();
   };
+  useModalEscape(handleClose);
 
   return (
     <div class="integration-modal-overlay">

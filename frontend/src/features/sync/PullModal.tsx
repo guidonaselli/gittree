@@ -1,6 +1,7 @@
 import { createSignal, createResource, Show, For, type Component } from "solid-js";
 import { getRemotes, pullRepository, cancelSyncNetworkOperation } from "../../api/commands";
 import type { PullStrategy, RemoteInfo, PullOutcome } from "../../api/types";
+import { useModalEscape } from "../../layout/modal-escape";
 import "./sync.css";
 
 export interface PullModalProps {
@@ -12,6 +13,7 @@ export interface PullModalProps {
 }
 
 export const PullModal: Component<PullModalProps> = (props) => {
+  useModalEscape(props.onClose);
   const [remotes] = createResource(() => props.root, getRemotes);
   const [selectedRemote, setSelectedRemote] = createSignal<string>("origin");
   const [branch, setBranch] = createSignal<string>(props.currentBranch ?? "");

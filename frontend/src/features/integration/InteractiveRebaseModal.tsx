@@ -13,6 +13,7 @@ import type {
   RebasePlanItem,
 } from "../../api/types";
 import { DirtyTreeRefusalModal } from "./DirtyTreeRefusalModal";
+import { useModalEscape } from "../../layout/modal-escape";
 import "./integration.css";
 
 export interface InteractiveRebaseModalProps {
@@ -26,6 +27,7 @@ export interface InteractiveRebaseModalProps {
 }
 
 export const InteractiveRebaseModal: Component<InteractiveRebaseModalProps> = (props) => {
+  useModalEscape(props.onClose);
   const [initialPlan] = createResource(
     () => ({ root: props.root, base: props.baseRef }),
     async ({ root, base }) => {

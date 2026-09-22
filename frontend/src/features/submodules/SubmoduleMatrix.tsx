@@ -507,6 +507,7 @@ export const SubmoduleMatrix: Component<{
     const basis = isKnown(s.remote_basis) ? upstreamBasisLabel(s.remote_basis.value) : null;
     const isSelected = () => selected().has(s.path);
     const stale = isFetchStale(s);
+    const remoteAheadBehind = isKnown(s.remote_ahead_behind) ? s.remote_ahead_behind.value : null;
 
     return (
       <tr
@@ -562,6 +563,7 @@ export const SubmoduleMatrix: Component<{
                       : `UrlMismatch: ${d.UrlMismatch.declared_url} vs ${d.UrlMismatch.config_url}`
                   }
                 >
+                  <span class="badge-icon" aria-hidden="true">⚠</span>
                   {typeof d === "string"
                     ? d === "DeclaredButAbsent"
                       ? "absent"
@@ -578,7 +580,7 @@ export const SubmoduleMatrix: Component<{
           <span class="branch-label">{branchLabel(s.branch)}</span>
           <Show when={isDetached(s)}>
             <span class="badge badge-neutral" title="Detached HEAD">
-              detached
+              <span class="badge-icon" aria-hidden="true">⎇</span> detached
             </span>
           </Show>
         </td>
@@ -589,7 +591,20 @@ export const SubmoduleMatrix: Component<{
             "cell-in-sync": isKnown(s.gitlink_divergence) && s.gitlink_divergence.value === "InSync",
           }}
         >
-          {gitlink}
+          <span class="state-icon" aria-hidden="true">
+            {!isKnown(s.gitlink_divergence)
+              ? "⚠"
+              : s.gitlink_divergence.value === "InSync"
+              ? "✓"
+              : typeof s.gitlink_divergence.value === "object" && "Ahead" in s.gitlink_divergence.value
+              ? "↑"
+              : typeof s.gitlink_divergence.value === "object" && "Behind" in s.gitlink_divergence.value
+              ? "↓"
+              : typeof s.gitlink_divergence.value === "object" && "Both" in s.gitlink_divergence.value
+              ? "⇅"
+              : "⚠"}
+          </span>
+          <span>{gitlink}</span>
         </td>
         <td class="col-remote">
           <Show
@@ -602,9 +617,22 @@ export const SubmoduleMatrix: Component<{
           >
             {(b) => (
               <>
+                <Show when={remoteAheadBehind}>
+                  {(ab) => (
+                    <span class="state-icon" aria-hidden="true">
+                      {ab()[0] > 0 && ab()[1] > 0
+                        ? "⇅"
+                        : ab()[0] > 0
+                        ? "↑"
+                        : ab()[1] > 0
+                        ? "↓"
+                        : "✓"}
+                    </span>
+                  )}
+                </Show>
                 <span class="divergence-counts">
-                  {isKnown(s.remote_ahead_behind)
-                    ? `${s.remote_ahead_behind.value[0]} ahead / ${s.remote_ahead_behind.value[1]} behind`
+                  {remoteAheadBehind
+                    ? `${remoteAheadBehind[0]} ahead / ${remoteAheadBehind[1]} behind`
                     : "—"}
                 </span>
                 <span
@@ -619,13 +647,20 @@ export const SubmoduleMatrix: Component<{
           </Show>
         </td>
         <td class="col-dirty" classList={{ "cell-dirty": dirty }}>
-          {isKnown(s.dirty) ? (dirty ? "dirty" : "clean") : `unknown (${unknownReason(s.dirty)})`}
+          {isKnown(s.dirty) ? (
+            <>
+              <span class="state-icon" aria-hidden="true">{dirty ? "●" : "✓"}</span>
+              <span>{dirty ? "dirty" : "clean"}</span>
+            </>
+          ) : (
+            `unknown (${unknownReason(s.dirty)})`
+          )}
         </td>
         <td class="col-fetch" classList={{ "cell-stale": stale }}>
           <span>{lastFetchLabel(s)}</span>
           <Show when={stale}>
             <span class="badge badge-warning" title="Fetch stale (>1 day ago or never)">
-              stale
+              <span class="badge-icon" aria-hidden="true">⏱</span> stale
             </span>
           </Show>
         </td>

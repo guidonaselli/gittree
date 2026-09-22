@@ -232,6 +232,20 @@
   min-width: var(--space-10);
 }
 
+.state-icon {
+  display: inline-block;
+  margin-right: var(--space-1);
+  font-size: var(--font-size-xs);
+  vertical-align: middle;
+}
+
+.badge-icon {
+  display: inline-block;
+  margin-right: var(--space-1);
+  font-size: var(--font-size-xs);
+  vertical-align: middle;
+}
+
 .row-selected {
   background: var(--color-bg-hover);
 }

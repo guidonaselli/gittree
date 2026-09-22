@@ -164,6 +164,30 @@ pub fn start_desktop_theme_watch<R: Runtime>(
     Some(WatchHandle::Native(debouncer))
 }
 
+/// Watches the user themes dir (~/.config/gittree/themes) and emits `user-themes:changed`.
+pub fn start_user_themes_watch<R: Runtime>(
+    app: AppHandle<R>,
+    watch_dir: PathBuf,
+) -> Option<WatchHandle> {
+    if !watch_dir.exists() {
+        let _ = std::fs::create_dir_all(&watch_dir);
+    }
+    let debouncer = new_debouncer(DEBOUNCE_WINDOW, move |result: DebounceEventResult| {
+        if result.is_ok() {
+            let _ = app.emit("user-themes:changed", ());
+        }
+    });
+    let mut debouncer = debouncer.ok()?;
+    debouncer
+        .watcher()
+        .watch(
+            &watch_dir,
+            notify_debouncer_mini::notify::RecursiveMode::NonRecursive,
+        )
+        .ok()?;
+    Some(WatchHandle::Native(debouncer))
+}
+
 fn spawn_poller<R: Runtime>(app: AppHandle<R>, root: PathBuf) -> WatchHandle {
     let task = tauri::async_runtime::spawn(async move {
         let git_dir = root.join(".git");
