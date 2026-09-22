@@ -50,6 +50,7 @@ import type {
   StashApplyOutcome,
   StashDetail,
   StashEntry,
+  SubmoduleMatrixResult,
   SubmoduleState,
   TagEntry,
   WorkingCopyStatus,
@@ -69,8 +70,12 @@ export function getRepositoryState(root: string): Promise<RepositoryState> {
   return invoke<RepositoryState>("get_repository_state", { root });
 }
 
-export function getSubmoduleMatrix(root: string): Promise<SubmoduleState[]> {
-  return invoke<SubmoduleState[]>("get_submodule_matrix", { root });
+export function getSubmoduleMatrix(root: string): Promise<SubmoduleMatrixResult> {
+  return invoke<SubmoduleMatrixResult>("get_submodule_matrix", { root });
+}
+
+export function getSingleSubmodule(root: string, submodulePath: string): Promise<SubmoduleState | null> {
+  return invoke<SubmoduleState | null>("get_single_submodule", { root, submodulePath });
 }
 
 export function getWorkingCopyStatus(root: string): Promise<Resolved<WorkingCopyStatus>> {

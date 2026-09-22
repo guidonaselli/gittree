@@ -25,7 +25,9 @@ async fn test_generate_submodule_superproject() {
         .filter(|e| {
             matches!(
                 e.gitlink_divergence.as_known(),
-                Some(GitlinkDivergence::Diverged { .. })
+                Some(GitlinkDivergence::Ahead { .. })
+                    | Some(GitlinkDivergence::Behind { .. })
+                    | Some(GitlinkDivergence::Both { .. })
             )
         })
         .count();

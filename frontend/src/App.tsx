@@ -32,7 +32,7 @@ import {
   type HistoryScope,
 } from "./api/commands";
 import { onDesktopThemeChanged, onRepositoryChanged, onWatchDegraded, onAskpassPrompt } from "./api/events";
-import { branchLabel, isKnown, type AskpassPromptPayload, type Bookmark, type RepositoryState, type Resolved, type SubmoduleState, type WorkingCopyStatus } from "./api/types";
+import { branchLabel, isKnown, type AskpassPromptPayload, type Bookmark, type RepositoryState, type Resolved, type SubmoduleMatrixResult, type WorkingCopyStatus } from "./api/types";
 import { WorkingCopyView } from "./features/working-copy/WorkingCopyView";
 import { HistoryView } from "./features/history/HistoryView";
 import { BranchesView } from "./features/branches/BranchesView";
@@ -114,7 +114,7 @@ export const App: Component = () => {
 
   // Per-path caches, invalidated by the watcher on a real change.
   const repoCache = new Map<string, RepositoryState>();
-  const submoduleCache = new Map<string, SubmoduleState[]>();
+  const submoduleCache = new Map<string, SubmoduleMatrixResult>();
   const workingCopyCache = new Map<string, Resolved<WorkingCopyStatus>>();
 
   const [bookmarks, { refetch: refetchBookmarks }] = createResource(getBookmarks);
@@ -765,8 +765,12 @@ export const App: Component = () => {
                 )}
               </Show>
             </Show>
-            <Show when={submodules() && submodules()!.length > 0}>
-              <SubmoduleMatrix submodules={submodules()!} onDrillIn={drillIntoSubmodule} />
+            <Show when={submodules() && (submodules()!.submodules.length > 0 || submodules()!.malformed_entries.length > 0)}>
+              <SubmoduleMatrix
+                submodules={submodules()!.submodules}
+                malformedEntries={submodules()!.malformed_entries}
+                onDrillIn={drillIntoSubmodule}
+              />
             </Show>
             <Show when={submodules.loading}>
               <p class="text-muted">Loading submodules…</p>

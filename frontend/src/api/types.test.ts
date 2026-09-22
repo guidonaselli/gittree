@@ -70,13 +70,22 @@ describe("gitlinkDivergenceLabel", () => {
   });
 
   it("reports ahead/behind counts for a diverged submodule", () => {
-    const d: Resolved<GitlinkDivergence> = { state: "Known", value: { Diverged: { ahead: 15, behind: 13 } } };
-    expect(gitlinkDivergenceLabel(d)).toBe("15 ahead / 13 behind");
+    const dAhead: Resolved<GitlinkDivergence> = { state: "Known", value: { Ahead: { ahead: 5 } } };
+    expect(gitlinkDivergenceLabel(dAhead)).toBe("5 ahead");
+
+    const dBehind: Resolved<GitlinkDivergence> = { state: "Known", value: { Behind: { behind: 3 } } };
+    expect(gitlinkDivergenceLabel(dBehind)).toBe("3 behind");
+
+    const dBoth: Resolved<GitlinkDivergence> = { state: "Known", value: { Both: { ahead: 15, behind: 13 } } };
+    expect(gitlinkDivergenceLabel(dBoth)).toBe("15 ahead / 13 behind");
   });
 
   it("distinguishes a missing gitlink object from zero divergence", () => {
-    const d: Resolved<GitlinkDivergence> = { state: "Known", value: "GitlinkObjectMissingLocally" };
-    expect(gitlinkDivergenceLabel(d)).toBe("gitlink commit unknown locally");
+    const d: Resolved<GitlinkDivergence> = {
+      state: "Known",
+      value: { GitlinkObjectMissingLocally: { gitlink_commit: "abcdef1234567890" } },
+    };
+    expect(gitlinkDivergenceLabel(d)).toBe("gitlink commit unknown locally (abcdef1)");
   });
 
   it("distinguishes unrelated histories from zero divergence", () => {

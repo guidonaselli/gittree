@@ -1,6 +1,6 @@
 /// A value that is either known, or explicitly unknown with a reason —
 /// never a silent blank.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "state", content = "value")]
 pub enum Resolved<T> {
     Known(T),

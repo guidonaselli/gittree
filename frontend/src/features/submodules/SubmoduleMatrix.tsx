@@ -5,6 +5,8 @@ import {
   isKnown,
   unknownReason,
   upstreamBasisLabel,
+  type MalformedGitmodulesEntry,
+  type SubmoduleDrift,
   type SubmoduleState,
 } from "../../api/types";
 
@@ -20,7 +22,11 @@ function isDetached(s: SubmoduleState): boolean {
 function gitlinkAheadBehind(s: SubmoduleState): { ahead: number; behind: number } | null {
   if (!isKnown(s.gitlink_divergence)) return null;
   const v = s.gitlink_divergence.value;
-  if (typeof v === "object" && "Diverged" in v) return v.Diverged;
+  if (typeof v === "object") {
+    if ("Ahead" in v) return { ahead: v.Ahead.ahead, behind: 0 };
+    if ("Behind" in v) return { ahead: 0, behind: v.Behind.behind };
+    if ("Both" in v) return { ahead: v.Both.ahead, behind: v.Both.behind };
+  }
   return null;
 }
 function hasNoRemoteBasis(s: SubmoduleState): boolean {
@@ -38,10 +44,15 @@ function lastFetchLabel(s: SubmoduleState): string {
   if (months < 24) return `${months}mo ago`;
   return `${Math.floor(months / 12)}y ago`;
 }
+function submoduleDrifts(s: SubmoduleState): SubmoduleDrift[] {
+  return isKnown(s.drift) ? s.drift.value : [];
+}
 
-export const SubmoduleMatrix: Component<{ submodules: SubmoduleState[]; onDrillIn: (path: string, name: string) => void }> = (
-  props,
-) => {
+export const SubmoduleMatrix: Component<{
+  submodules: SubmoduleState[];
+  malformedEntries?: MalformedGitmodulesEntry[];
+  onDrillIn: (path: string, name: string) => void;
+}> = (props) => {
   const [filter, setFilter] = createSignal<StateFilter>("all");
   const [sortKey, setSortKey] = createSignal<SortKey>("name");
   const [selected, setSelected] = createSignal<Set<string>>(new Set());
@@ -132,9 +143,21 @@ export const SubmoduleMatrix: Component<{ submodules: SubmoduleState[]; onDrillI
           />
         </td>
         <td class="col-name">
-          <button class="collapse-toggle" onClick={() => props.onDrillIn(s.path, s.name)} disabled={!s.initialized}>
-            {s.name}
-          </button>
+          <span style={{ "padding-left": `${(s.depth - 1) * 16}px` }}>
+            <button class="collapse-toggle" onClick={() => props.onDrillIn(s.path, s.name)} disabled={!s.initialized}>
+              {s.name}
+            </button>
+            <Show when={s.depth > 1}>
+              <span class="badge badge-neutral" title={`Nested submodule (depth ${s.depth})`}>L{s.depth}</span>
+            </Show>
+            <For each={submoduleDrifts(s)}>
+              {(d) => (
+                <span class="badge badge-warning" title={typeof d === "string" ? d : `UrlMismatch: ${d.UrlMismatch.declared_url} vs ${d.UrlMismatch.config_url}`}>
+                  {typeof d === "string" ? (d === "DeclaredButAbsent" ? "absent" : d === "PresentButUndeclared" ? "undeclared" : "orphaned") : "url-mismatch"}
+                </span>
+              )}
+            </For>
+          </span>
         </td>
         <td>
           {branchLabel(s.branch)}
@@ -189,6 +212,21 @@ export const SubmoduleMatrix: Component<{ submodules: SubmoduleState[]; onDrillI
           Group by branch
         </label>
       </div>
+
+      <Show when={props.malformedEntries && props.malformedEntries.length > 0}>
+        <div class="matrix-malformed-alert" role="alert">
+          <strong>Malformed .gitmodules entries:</strong>
+          <ul>
+            <For each={props.malformedEntries}>
+              {(m) => (
+                <li>
+                  Line {m.line_number}: <code>{m.raw_text}</code> — {m.reason}
+                </li>
+              )}
+            </For>
+          </ul>
+        </div>
+      </Show>
 
       <div class="matrix-scroll">
         <table class="matrix-table">

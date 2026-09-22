@@ -14,14 +14,14 @@ use repo_state::{
     amend, commit, commit_message_template, delete_untracked_paths, diff_file,
     diff_file_with_options, diff_revisions, discard_tracked_paths, head_is_published, query_blame,
     query_commit_detail, query_file_at_revision, query_history_count, query_history_graph,
-    query_history_page, query_repository_state, query_submodule_matrix,
+    query_history_page, query_repository_state, query_single_submodule, query_submodule_matrix,
     query_working_copy_status_cancellable, read_blob_base64, read_working_tree_file_base64,
     stage_hunks, stage_lines,
     stash_paths, unstage_hunks, unstage_lines, unstage_paths, BlameLine, BlameOptions,
     CommitDetail, CommitMessageTemplate, CommitOptions, CommitSummary,
     DiffViewOptions, FileDiff, GraphResult, HistoricalFile, HistoryScope, HistorySearchOptions,
     HistorySearchResult, IgnoreExplanation, IgnoreTarget, OpenOutcome, RepositoryState, Resolved,
-    SubmoduleState, WorkingCopyStatus,
+    SubmoduleMatrixResult, SubmoduleState, WorkingCopyStatus,
 };
 use repo_state::{
     add_ignore_rule, check_ignore, checkout_branch, compare_branches, create_branch,
@@ -103,9 +103,20 @@ async fn get_repository_state(
 async fn get_submodule_matrix(
     state: State<'_, AppState>,
     root: String,
-) -> Result<Vec<SubmoduleState>, String> {
+) -> Result<SubmoduleMatrixResult, String> {
     let root = PathBuf::from(root);
     Ok(query_submodule_matrix(&state.process_layer, &root).await)
+}
+
+#[tauri::command]
+async fn get_single_submodule(
+    state: State<'_, AppState>,
+    root: String,
+    submodule_path: String,
+) -> Result<Option<SubmoduleState>, String> {
+    let root = PathBuf::from(root);
+    let sub_path = PathBuf::from(submodule_path);
+    Ok(query_single_submodule(&state.process_layer, &root, &sub_path).await)
 }
 
 #[tauri::command]
@@ -1169,6 +1180,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_repository_state,
             get_submodule_matrix,
+            get_single_submodule,
             get_working_copy_status,
             cancel_working_copy_status,
             stage_working_copy_paths,

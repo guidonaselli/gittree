@@ -67,30 +67,60 @@ export type RepositoryState = {
 
 export type GitlinkDivergence =
   | "InSync"
-  | { Diverged: { ahead: number; behind: number } }
-  | "GitlinkObjectMissingLocally"
+  | { Ahead: { ahead: number } }
+  | { Behind: { behind: number } }
+  | { Both: { ahead: number; behind: number } }
+  | { GitlinkObjectMissingLocally: { gitlink_commit: string } }
   | "UnrelatedHistories";
+
+export type SubmoduleBranch =
+  | { Named: string }
+  | { Detached: { commit: string; pointing_refs: string[] } };
+
+export type SubmoduleDrift =
+  | "DeclaredButAbsent"
+  | "PresentButUndeclared"
+  | { UrlMismatch: { declared_url: string; config_url: string } }
+  | "OrphanedDeclaration";
+
+export type MalformedGitmodulesEntry = {
+  line_number: number;
+  raw_text: string;
+  reason: string;
+};
 
 export type SubmoduleState = {
   name: string;
   path: string;
-  declared_branch: string | null;
-  url: string | null;
+  relative_path: string;
+  depth: number;
+  parent_path: string | null;
+  declared_branch: Resolved<string | null>;
+  url: Resolved<string | null>;
   initialized: boolean;
   gitlink_commit: Resolved<string>;
-  branch: Resolved<Branch>;
+  branch: Resolved<SubmoduleBranch>;
   gitlink_divergence: Resolved<GitlinkDivergence>;
   remote_basis: Resolved<UpstreamBasis>;
   remote_ahead_behind: Resolved<[number, number]>;
   dirty: Resolved<boolean>;
   last_fetch_unix_secs: Resolved<number | null>;
+  drift: Resolved<SubmoduleDrift[]>;
 };
 
-export function branchLabel(b: Resolved<Branch>): string {
+export type SubmoduleMatrixResult = {
+  submodules: SubmoduleState[];
+  malformed_entries: MalformedGitmodulesEntry[];
+};
+
+export function branchLabel(b: Resolved<Branch | SubmoduleBranch>): string {
   if (!isKnown(b)) return `unknown (${unknownReason(b)})`;
   const branch = b.value;
   if ("Named" in branch) return branch.Named;
-  return `detached @ ${branch.Detached.commit.slice(0, 7)}`;
+  const refs = "pointing_refs" in branch.Detached && branch.Detached.pointing_refs.length > 0
+    ? ` (${branch.Detached.pointing_refs.join(", ")})`
+    : "";
+  return `detached @ ${branch.Detached.commit.slice(0, 7)}${refs}`;
 }
 
 export function upstreamBasisLabel(basis: UpstreamBasis): { label: string; inferred: boolean } {
@@ -179,9 +209,16 @@ export function gitlinkDivergenceLabel(d: Resolved<GitlinkDivergence>): string {
   if (!isKnown(d)) return `unknown (${unknownReason(d)})`;
   const v = d.value;
   if (v === "InSync") return "in sync";
-  if (v === "GitlinkObjectMissingLocally") return "gitlink commit unknown locally";
   if (v === "UnrelatedHistories") return "unrelated histories";
-  return `${v.Diverged.ahead} ahead / ${v.Diverged.behind} behind`;
+  if (typeof v === "object") {
+    if ("Ahead" in v) return `${v.Ahead.ahead} ahead`;
+    if ("Behind" in v) return `${v.Behind.behind} behind`;
+    if ("Both" in v) return `${v.Both.ahead} ahead / ${v.Both.behind} behind`;
+    if ("GitlinkObjectMissingLocally" in v) {
+      return `gitlink commit unknown locally (${v.GitlinkObjectMissingLocally.gitlink_commit.slice(0, 7)})`;
+    }
+  }
+  return "diverged";
 }
 
 export type IgnoreTarget = "GitIgnore" | "GitInfoExclude";

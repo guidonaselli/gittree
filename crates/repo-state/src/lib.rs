@@ -76,7 +76,11 @@ pub use stashes::{
     CreateStashOptions, StashApplyOutcome, StashDetail, StashEntry, StashFileStat,
 };
 pub use status::{query_repository_state, InProgressOperation, RepositoryState};
-pub use submodule::{query_submodule_matrix, GitlinkDivergence, SubmoduleState};
+pub use submodule::{
+    query_single_submodule, query_submodule_matrix, query_submodule_matrix_with_depth,
+    GitlinkDivergence, MalformedGitmodulesEntry, SubmoduleBranch, SubmoduleDrift,
+    SubmoduleMatrixResult, SubmoduleState,
+};
 pub use sync::{
     fetch, pull, push, query_remotes, FetchOptions, MultiRemoteFetchResult, PullOptions,
     PullOutcome, PullStrategy, PushForceMode, PushOptions, PushOutcome, RemoteFetchOutcome,
