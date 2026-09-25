@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-20
+goal: Ship a Linux desktop Git client that matches Sourcetree's daily workflow and adds a
+  submodule workspace no existing client provides, on a 25-submodule reference superproject.

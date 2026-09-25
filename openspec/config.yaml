@@ -1,0 +1,36 @@
+schema: lmd-lite
+
+context: |
+  Project: GitTree, a desktop Git client for Linux that replaces Atlassian Sourcetree
+  (macOS/Windows only) and improves on it where Sourcetree is weak.
+  Primary platform: Linux/Wayland (Hyprland, CachyOS reference machine); X11 must also work.
+  Stack: Tauri 2 shell, Rust backend, web frontend. Git data comes from shelling out to the
+  system `git` CLI (>= 2.43) through a bounded worker pool — never libgit2 or gitoxide,
+  because `gix` has documented gaps exactly in submodule status, which is this product's
+  differentiator, and the `git` CLI is the free correctness reference.
+  Reference workload: a 25-submodule, 3.1 GB superproject where submodules sit on five
+  different branch families at once, every submodule diverges from the recorded gitlink,
+  upstream tracking (@{u}) is unset on most, and one is detached.
+  Differentiator: a submodule workspace no existing Linux client provides — every submodule's
+  branch, gitlink divergence, remote divergence and dirtiness in one always-current matrix.
+  Delivery order: core Git client first (working copy, history, branches/sync), submodule
+  workspace next, theming polish after. Sourcetree feature parity is the floor, not the ceiling.
+  Planning model: OpenSpec is canonical for requirements and design; LMD under 05_PLANNING
+  mirrors execution state and links back to OpenSpec task numbers.
+
+rules:
+  proposal:
+    - State non-goals explicitly, including which Sourcetree behaviours are deliberately not copied.
+    - Include measurable outcomes with numeric budgets, not adjectives.
+  specs:
+    - Use testable SHALL/MUST requirements with Given/When/Then scenarios.
+    - Every requirement that touches repository state MUST state its destructive-action guard.
+    - Cover keyboard operability, theming and performance budgets as requirements, not polish.
+  design:
+    - Record architecture decisions, process/data contracts, verification gates and rejected alternatives.
+    - No paid, cloud or telemetry runtime dependency. The app MUST be fully usable offline.
+    - Justify every added dependency against the stdlib-first, YAGNI-by-default rule.
+  tasks:
+    - Organize tasks into vertical increments that each leave the app launchable and usable.
+    - Keep each task small enough for one agent context window.
+    - Pair every task with the command or check that proves it.
