@@ -3,6 +3,7 @@ import { getRemotes, fetchRemotes, cancelSyncNetworkOperation } from "../../api/
 import type { MultiRemoteFetchResult, RemoteInfo } from "../../api/types";
 import { useModalEscape } from "../../layout/modal-escape";
 import "./sync.css";
+import { Icon } from "../../ui/Icon";
 
 export interface FetchModalProps {
   root: string;
@@ -62,7 +63,7 @@ export const FetchModal: Component<FetchModalProps> = (props) => {
             Fetch Remotes
           </h2>
           <button class="collapse-toggle" onClick={props.onClose} aria-label="Close">
-            ✕
+            <Icon name="close" size={14} />
           </button>
         </div>
 
@@ -152,7 +153,10 @@ export const FetchModal: Component<FetchModalProps> = (props) => {
                     <div class={`sync-outcome-item ${outcome.success ? "success" : "failed"}`}>
                       <div class="sync-outcome-header">
                         <span>{outcome.remote}</span>
-                        <span>{outcome.success ? "✓ Succeeded" : "✗ Failed"}</span>
+                        <span style={{ display: "inline-flex", "align-items": "center", gap: "var(--space-1)" }}>
+                          <Icon name={outcome.success ? "check" : "error"} size={14} />
+                          <span>{outcome.success ? "Succeeded" : "Failed"}</span>
+                        </span>
                       </div>
                       <div class="sync-outcome-summary">{outcome.summary}</div>
                       <Show when={outcome.error}>

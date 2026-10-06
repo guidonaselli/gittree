@@ -7,6 +7,7 @@ import {
   Show,
 } from "solid-js";
 import "./command-error.css";
+import { Icon } from "../../ui/Icon";
 
 export interface CommandErrorModalProps {
   open: boolean;
@@ -78,7 +79,7 @@ export const CommandErrorModal: Component<CommandErrorModalProps> = (props) => {
         >
           <div class="command-error-header">
             <h2>
-              <span>⚠</span>
+              <Icon name="warning" size={20} />
               <span>{props.title ?? "Command Execution Failed"}</span>
             </h2>
             <button
@@ -88,7 +89,7 @@ export const CommandErrorModal: Component<CommandErrorModalProps> = (props) => {
               title="Close (Esc)"
               aria-label="Close"
             >
-              ✕
+              <Icon name="close" size={14} />
             </button>
           </div>
 
@@ -117,7 +118,10 @@ export const CommandErrorModal: Component<CommandErrorModalProps> = (props) => {
               class="command-error-copy-btn"
               onClick={copyDetails}
             >
-              {copied() ? "✓ Copied" : "Copy Details"}
+              <Show when={copied()} fallback={<Icon name="copy" size={14} />}>
+                <Icon name="check" size={14} />
+              </Show>
+              <span>{copied() ? "Copied" : "Copy Details"}</span>
             </button>
             <button
               type="button"

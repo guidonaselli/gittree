@@ -47,6 +47,7 @@ import {
   submoduleDrifts,
 } from "./submodule-helpers";
 import "./submodule-matrix.css";
+import { Icon } from "../../ui/Icon";
 
 export {
   type SortKey,
@@ -563,7 +564,7 @@ export const SubmoduleMatrix: Component<{
                       : `UrlMismatch: ${d.UrlMismatch.declared_url} vs ${d.UrlMismatch.config_url}`
                   }
                 >
-                  <span class="badge-icon" aria-hidden="true">⚠</span>
+                  <Icon name="warning" size={12} class="badge-icon" />
                   {typeof d === "string"
                     ? d === "DeclaredButAbsent"
                       ? "absent"
@@ -580,7 +581,7 @@ export const SubmoduleMatrix: Component<{
           <span class="branch-label">{branchLabel(s.branch)}</span>
           <Show when={isDetached(s)}>
             <span class="badge badge-neutral" title="Detached HEAD">
-              <span class="badge-icon" aria-hidden="true">⎇</span> detached
+              <Icon name="branch" size={12} class="badge-icon" /> detached
             </span>
           </Show>
         </td>
@@ -592,17 +593,19 @@ export const SubmoduleMatrix: Component<{
           }}
         >
           <span class="state-icon" aria-hidden="true">
-            {!isKnown(s.gitlink_divergence)
-              ? "⚠"
-              : s.gitlink_divergence.value === "InSync"
-              ? "✓"
-              : typeof s.gitlink_divergence.value === "object" && "Ahead" in s.gitlink_divergence.value
-              ? "↑"
-              : typeof s.gitlink_divergence.value === "object" && "Behind" in s.gitlink_divergence.value
-              ? "↓"
-              : typeof s.gitlink_divergence.value === "object" && "Both" in s.gitlink_divergence.value
-              ? "⇅"
-              : "⚠"}
+            {!isKnown(s.gitlink_divergence) ? (
+              <Icon name="warning" size={12} />
+            ) : s.gitlink_divergence.value === "InSync" ? (
+              <Icon name="check" size={12} />
+            ) : typeof s.gitlink_divergence.value === "object" && "Ahead" in s.gitlink_divergence.value ? (
+              <Icon name="arrow-up" size={12} />
+            ) : typeof s.gitlink_divergence.value === "object" && "Behind" in s.gitlink_divergence.value ? (
+              <Icon name="arrow-down" size={12} />
+            ) : typeof s.gitlink_divergence.value === "object" && "Both" in s.gitlink_divergence.value ? (
+              <Icon name="arrow-up-down" size={12} />
+            ) : (
+              <Icon name="warning" size={12} />
+            )}
           </span>
           <span>{gitlink}</span>
         </td>
@@ -620,13 +623,15 @@ export const SubmoduleMatrix: Component<{
                 <Show when={remoteAheadBehind}>
                   {(ab) => (
                     <span class="state-icon" aria-hidden="true">
-                      {ab()[0] > 0 && ab()[1] > 0
-                        ? "⇅"
-                        : ab()[0] > 0
-                        ? "↑"
-                        : ab()[1] > 0
-                        ? "↓"
-                        : "✓"}
+                      {ab()[0] > 0 && ab()[1] > 0 ? (
+                        <Icon name="arrow-up-down" size={12} />
+                      ) : ab()[0] > 0 ? (
+                        <Icon name="arrow-up" size={12} />
+                      ) : ab()[1] > 0 ? (
+                        <Icon name="arrow-down" size={12} />
+                      ) : (
+                        <Icon name="check" size={12} />
+                      )}
                     </span>
                   )}
                 </Show>
@@ -649,7 +654,9 @@ export const SubmoduleMatrix: Component<{
         <td class="col-dirty" classList={{ "cell-dirty": dirty }}>
           {isKnown(s.dirty) ? (
             <>
-              <span class="state-icon" aria-hidden="true">{dirty ? "●" : "✓"}</span>
+              <span class="state-icon" aria-hidden="true">
+                {dirty ? <Icon name="dirty" size={10} /> : <Icon name="check" size={12} />}
+              </span>
               <span>{dirty ? "dirty" : "clean"}</span>
             </>
           ) : (
@@ -660,7 +667,7 @@ export const SubmoduleMatrix: Component<{
           <span>{lastFetchLabel(s)}</span>
           <Show when={stale}>
             <span class="badge badge-warning" title="Fetch stale (>1 day ago or never)">
-              <span class="badge-icon" aria-hidden="true">⏱</span> stale
+              <Icon name="refresh" size={12} class="badge-icon" /> stale
             </span>
           </Show>
         </td>

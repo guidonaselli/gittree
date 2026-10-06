@@ -15,6 +15,7 @@ import type {
 import { DirtyTreeRefusalModal } from "./DirtyTreeRefusalModal";
 import { useModalEscape } from "../../layout/modal-escape";
 import "./integration.css";
+import { Icon } from "../../ui/Icon";
 
 export interface InteractiveRebaseModalProps {
   root: string;
@@ -119,8 +120,8 @@ export const InteractiveRebaseModal: Component<InteractiveRebaseModalProps> = (p
         <div class="integration-modal-card">
           <div class="integration-modal-header">
             <h3>Interactive Rebase onto {props.baseDescription || props.baseRef}</h3>
-            <button class="integration-btn" onClick={props.onClose}>
-              ✕
+            <button class="integration-btn" onClick={props.onClose} aria-label="Close">
+              <Icon name="close" size={14} />
             </button>
           </div>
 

@@ -1,6 +1,7 @@
 import type { Component } from "solid-js";
 import { useModalEscape } from "../../layout/modal-escape";
 import "./integration.css";
+import { Icon } from "../../ui/Icon";
 
 export interface AbortConfirmationModalProps {
   operationName: string;
@@ -16,8 +17,8 @@ export const AbortConfirmationModal: Component<AbortConfirmationModalProps> = (p
       <div class="integration-modal-card">
         <div class="integration-modal-header">
           <h3>Abort {props.operationName}</h3>
-          <button class="integration-btn" onClick={props.onClose}>
-            ✕
+          <button class="integration-btn" onClick={props.onClose} aria-label="Close">
+            <Icon name="close" size={14} />
           </button>
         </div>
         <div class="integration-modal-body">

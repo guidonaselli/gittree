@@ -14,6 +14,7 @@ import {
   validateRebind,
 } from "./keybindings";
 import "./keybindings.css";
+import { Icon } from "../ui/Icon";
 
 export interface KeybindingsModalProps {
   open: boolean;
@@ -154,16 +155,17 @@ export const KeybindingsModal: Component<KeybindingsModalProps> = (props) => {
               title="Close (Esc)"
               aria-label="Close"
             >
-              ✕
+              <Icon name="close" size={14} />
             </button>
           </div>
 
           <Show when={conflictMessage()}>
             {(msg) => (
               <div class="keybindings-conflict-banner" role="alert">
-                <span>⚠ {msg()}</span>
-                <button type="button" onClick={() => setConflictMessage(null)}>
-                  ✕
+                <Icon name="warning" size={14} />
+                <span>{msg()}</span>
+                <button type="button" onClick={() => setConflictMessage(null)} aria-label="Dismiss warning">
+                  <Icon name="close" size={12} />
                 </button>
               </div>
             )}

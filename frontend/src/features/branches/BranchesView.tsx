@@ -18,6 +18,7 @@ import {
 } from "../../api/types";
 import "./branches.css";
 import { MergeModal } from "../integration/MergeModal";
+import { Icon } from "../../ui/Icon";
 
 export interface BranchesViewProps {
   root: string;
@@ -335,8 +336,8 @@ export const BranchesView: Component<BranchesViewProps> = (props) => {
             <div class="branch-modal-card">
               <div class="branch-modal-header">
                 <h3>Checkout Conflict</h3>
-                <button class="branches-btn" onClick={() => setCheckoutConflict(null)}>
-                  ✕
+                <button class="branches-btn" onClick={() => setCheckoutConflict(null)} aria-label="Close">
+                  <Icon name="close" size={14} />
                 </button>
               </div>
               <div class="branch-modal-body">
@@ -400,8 +401,8 @@ export const BranchesView: Component<BranchesViewProps> = (props) => {
             <div class="branch-modal-card">
               <div class="branch-modal-header">
                 <h3>Unmerged Branch Warning: '{guard().branch}'</h3>
-                <button class="branches-btn" onClick={() => setUnmergedGuard(null)}>
-                  ✕
+                <button class="branches-btn" onClick={() => setUnmergedGuard(null)} aria-label="Close">
+                  <Icon name="close" size={14} />
                 </button>
               </div>
               <div class="branch-modal-body">
@@ -590,8 +591,8 @@ const CreateBranchDialog: Component<{
       <div class="branch-modal-card">
         <div class="branch-modal-header">
           <h3>Create New Branch</h3>
-          <button class="branches-btn" onClick={props.onClose}>
-            ✕
+          <button class="branches-btn" onClick={props.onClose} aria-label="Close">
+            <Icon name="close" size={14} />
           </button>
         </div>
         <div class="branch-modal-body">
@@ -686,8 +687,8 @@ const CreateTrackingBranchDialog: Component<{
       <div class="branch-modal-card">
         <div class="branch-modal-header">
           <h3>Create Local Tracking Branch</h3>
-          <button class="branches-btn" onClick={props.onClose}>
-            ✕
+          <button class="branches-btn" onClick={props.onClose} aria-label="Close">
+            <Icon name="close" size={14} />
           </button>
         </div>
         <div class="branch-modal-body">
@@ -769,8 +770,8 @@ const RenameBranchDialog: Component<{
       <div class="branch-modal-card">
         <div class="branch-modal-header">
           <h3>Rename Branch '{props.branch.name}'</h3>
-          <button class="branches-btn" onClick={props.onClose}>
-            ✕
+          <button class="branches-btn" onClick={props.onClose} aria-label="Close">
+            <Icon name="close" size={14} />
           </button>
         </div>
         <div class="branch-modal-body">
@@ -835,8 +836,8 @@ const CompareBranchesDialog: Component<{
       <div class="branch-modal-card" style={{ "max-width": "720px" }}>
         <div class="branch-modal-header">
           <h3>Branch Comparison</h3>
-          <button class="branches-btn" onClick={props.onClose}>
-            ✕
+          <button class="branches-btn" onClick={props.onClose} aria-label="Close">
+            <Icon name="close" size={14} />
           </button>
         </div>
         <div class="branch-modal-body">

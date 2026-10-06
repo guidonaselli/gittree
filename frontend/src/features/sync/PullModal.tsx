@@ -3,6 +3,7 @@ import { getRemotes, pullRepository, cancelSyncNetworkOperation } from "../../ap
 import type { PullStrategy, RemoteInfo, PullOutcome } from "../../api/types";
 import { useModalEscape } from "../../layout/modal-escape";
 import "./sync.css";
+import { Icon } from "../../ui/Icon";
 
 export interface PullModalProps {
   root: string;
@@ -69,7 +70,7 @@ export const PullModal: Component<PullModalProps> = (props) => {
             Pull from Remote
           </h2>
           <button class="collapse-toggle" onClick={props.onClose} aria-label="Close">
-            ✕
+            <Icon name="close" size={14} />
           </button>
         </div>
 
@@ -200,7 +201,7 @@ export const PullModal: Component<PullModalProps> = (props) => {
                 <div class="sync-outcome-item success">
                   <div class="sync-outcome-header">
                     <span>Pull Successful</span>
-                    <span>✓</span>
+                    <Icon name="check" size={16} />
                   </div>
                   <div class="sync-outcome-summary">
                     {(outcome() as { summary: string }).summary}

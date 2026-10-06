@@ -71,6 +71,10 @@ export function resolveRepositoryRoot(path: string): Promise<OpenRepositoryResul
   return invoke<OpenRepositoryResult>("resolve_repository_root", { path });
 }
 
+export function pickFolder(): Promise<string | null> {
+  return invoke<string | null>("pick_folder");
+}
+
 export function initRepository(path: string): Promise<string> {
   return invoke<string>("init_repository", { path });
 }

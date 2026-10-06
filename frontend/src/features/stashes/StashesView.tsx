@@ -17,6 +17,7 @@ import {
 } from "../../api/commands";
 import type { StashEntry } from "../../api/types";
 import "./stashes.css";
+import { Icon } from "../../ui/Icon";
 
 export interface StashesViewProps {
   root: string;
@@ -327,8 +328,8 @@ export const StashesView: Component<StashesViewProps> = (props) => {
             <div class="stash-modal-card">
               <div class="stash-modal-header">
                 <h3>Conflicts During Stash Operation</h3>
-                <button class="stashes-btn" onClick={() => setConflictOutcome(null)}>
-                  ✕
+                <button class="stashes-btn" onClick={() => setConflictOutcome(null)} aria-label="Close">
+                  <Icon name="close" size={14} />
                 </button>
               </div>
               <div class="stash-modal-body">
@@ -422,8 +423,8 @@ const CreateStashDialog: Component<CreateStashDialogProps> = (props) => {
       <div class="stash-modal-card">
         <div class="stash-modal-header">
           <h3>Create Stash</h3>
-          <button class="stashes-btn" onClick={props.onClose}>
-            ✕
+          <button class="stashes-btn" onClick={props.onClose} aria-label="Close">
+            <Icon name="close" size={14} />
           </button>
         </div>
         <div class="stash-modal-body">
@@ -509,8 +510,8 @@ const DropStashDialog: Component<DropStashDialogProps> = (props) => {
       <div class="stash-modal-card">
         <div class="stash-modal-header">
           <h3>Drop Stash</h3>
-          <button class="stashes-btn" onClick={props.onClose}>
-            ✕
+          <button class="stashes-btn" onClick={props.onClose} aria-label="Close">
+            <Icon name="close" size={14} />
           </button>
         </div>
         <div class="stash-modal-body">
@@ -574,8 +575,8 @@ const ClearStashesDialog: Component<ClearStashesDialogProps> = (props) => {
       <div class="stash-modal-card">
         <div class="stash-modal-header">
           <h3>Clear All Stashes</h3>
-          <button class="stashes-btn" onClick={props.onClose}>
-            ✕
+          <button class="stashes-btn" onClick={props.onClose} aria-label="Close">
+            <Icon name="close" size={14} />
           </button>
         </div>
         <div class="stash-modal-body">

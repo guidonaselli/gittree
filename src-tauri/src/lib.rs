@@ -742,6 +742,15 @@ async fn resolve_repository_root(
 }
 
 #[tauri::command]
+async fn pick_folder() -> Result<Option<String>, String> {
+    let folder = rfd::AsyncFileDialog::new()
+        .set_title("Open Git Repository")
+        .pick_folder()
+        .await;
+    Ok(folder.map(|f| f.path().to_string_lossy().to_string()))
+}
+
+#[tauri::command]
 async fn init_repository(state: State<'_, AppState>, path: String) -> Result<String, String> {
     repo_state::init_repository(&state.process_layer, std::path::Path::new(&path)).await?;
     let outcome =
@@ -1421,6 +1430,7 @@ pub fn run() {
             get_commit_detail,
             amend_working_copy,
             resolve_repository_root,
+            pick_folder,
             get_settings,
             save_settings,
             get_bookmarks,

@@ -18,6 +18,7 @@ import { BlameView } from "../working-copy/BlameView";
 import { InteractiveRebaseModal } from "../integration/InteractiveRebaseModal";
 import { CherryPickModal } from "../integration/CherryPickModal";
 import { RevertModal } from "../integration/RevertModal";
+import { Icon } from "../../ui/Icon";
 
 const ROW_HEIGHT = 24;
 const PAGE_SIZE = 100;
@@ -527,7 +528,7 @@ export const HistoryView: Component<{
           <>
             <Show when={props.hasUncommittedChanges}>
               <button class="history-uncommitted-entry" onClick={props.onSelectUncommitted}>
-                <span class="history-sha">●</span>
+                <Icon name="dirty" size={10} class="history-sha" />
                 <span class="history-subject">Uncommitted changes</span>
               </button>
             </Show>

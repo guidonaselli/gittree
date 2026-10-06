@@ -3,6 +3,7 @@ import { createStash, startCherryPick } from "../../api/commands";
 import type { CherryPickOptions, DirtyTreeDetails } from "../../api/types";
 import { DirtyTreeRefusalModal } from "./DirtyTreeRefusalModal";
 import "./integration.css";
+import { Icon } from "../../ui/Icon";
 
 export interface CherryPickModalProps {
   root: string;
@@ -73,8 +74,8 @@ export const CherryPickModal: Component<CherryPickModalProps> = (props) => {
         <div class="integration-modal-card">
           <div class="integration-modal-header">
             <h3>Cherry-Pick Commit</h3>
-            <button class="integration-btn" onClick={props.onClose}>
-              ✕
+            <button class="integration-btn" onClick={props.onClose} aria-label="Close">
+              <Icon name="close" size={14} />
             </button>
           </div>
 

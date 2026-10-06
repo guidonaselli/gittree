@@ -25,6 +25,7 @@ tracing-subscriber = "0.3"
 notify-debouncer-mini.workspace = true
 dirs.workspace = true
 toml = "1"
+rfd = { version = "0.17.2", features = ["xdg-portal"] }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

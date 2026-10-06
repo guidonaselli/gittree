@@ -1,5 +1,6 @@
 import { createEffect, onCleanup, type Component, For } from "solid-js";
 import "./conflicts.css";
+import { Icon } from "../../ui/Icon";
 
 export interface ConflictMarkerGuardModalProps {
   file: string;
@@ -30,7 +31,7 @@ export const ConflictMarkerGuardModal: Component<ConflictMarkerGuardModalProps> 
         <div class="conflict-guard-header">
           <h3 id="marker-guard-title">Unresolved Conflict Markers</h3>
           <button class="conflict-btn" onClick={props.onCancel} aria-label="Close">
-            ✕
+            <Icon name="close" size={14} />
           </button>
         </div>
         <div class="conflict-guard-body">

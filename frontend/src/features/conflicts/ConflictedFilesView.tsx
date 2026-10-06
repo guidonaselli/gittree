@@ -3,6 +3,7 @@ import type { ConflictItem, MergetoolConfig } from "../../api/types";
 import { getMergetoolConfig, launchMergetool, resolveConflict } from "../../api/commands";
 import { SubmoduleConflictResolver } from "./SubmoduleConflictResolver";
 import "./conflicts.css";
+import { Icon } from "../../ui/Icon";
 
 export interface ConflictedFilesViewProps {
   root: string;
@@ -123,7 +124,8 @@ export const ConflictedFilesView: Component<ConflictedFilesViewProps> = (props) 
     <section class="conflicts-section">
       <div class="conflicts-header">
         <h3 class="conflicts-title">
-          <span>⚠️</span> Conflicted Files ({props.conflicts.length})
+          <Icon name="warning" size={16} />
+          <span>Conflicted Files ({props.conflicts.length})</span>
         </h3>
         <span style={{ "font-size": "var(--font-size-xs)", color: "var(--color-text-muted)" }}>
           Resolve conflicts by choosing Ours, Theirs, or running a Mergetool.
@@ -155,7 +157,8 @@ export const ConflictedFilesView: Component<ConflictedFilesViewProps> = (props) 
                     <span class="conflict-path">{item.path}</span>
                     <Show when={item.marker_info?.has_markers}>
                       <span class="conflict-marker-warning">
-                        ⚠️ Markers on line{item.marker_info!.marker_lines.length > 1 ? "s" : ""}: {item.marker_info!.marker_lines.join(", ")}
+                        <Icon name="warning" size={12} />
+                        <span>Markers on line{item.marker_info!.marker_lines.length > 1 ? "s" : ""}: {item.marker_info!.marker_lines.join(", ")}</span>
                       </span>
                     </Show>
                   </div>

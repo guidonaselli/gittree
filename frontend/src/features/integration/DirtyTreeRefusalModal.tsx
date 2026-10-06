@@ -2,6 +2,7 @@ import type { Component } from "solid-js";
 import type { DirtyTreeDetails } from "../../api/types";
 import { useModalEscape } from "../../layout/modal-escape";
 import "./integration.css";
+import { Icon } from "../../ui/Icon";
 
 export interface DirtyTreeRefusalModalProps {
   operationName: string;
@@ -24,8 +25,8 @@ export const DirtyTreeRefusalModal: Component<DirtyTreeRefusalModalProps> = (pro
       <div class="integration-modal-card">
         <div class="integration-modal-header">
           <h3>Uncommitted Changes Guard</h3>
-          <button class="integration-btn" onClick={handleClose}>
-            ✕
+          <button class="integration-btn" onClick={handleClose} aria-label="Close">
+            <Icon name="close" size={14} />
           </button>
         </div>
         <div class="integration-modal-body">

@@ -9,6 +9,7 @@ import {
 } from "../../api/commands";
 import type { TagEntry } from "../../api/types";
 import "./tags.css";
+import { Icon } from "../../ui/Icon";
 
 export interface TagsViewProps {
   root: string;
@@ -263,8 +264,8 @@ const CreateTagDialog: Component<CreateTagDialogProps> = (props) => {
       <div class="tag-modal-card">
         <div class="tag-modal-header">
           <h3>Create New Tag</h3>
-          <button class="tags-btn" onClick={props.onClose}>
-            ✕
+          <button class="tags-btn" onClick={props.onClose} aria-label="Close">
+            <Icon name="close" size={14} />
           </button>
         </div>
         <div class="tag-modal-body">
@@ -414,8 +415,8 @@ const PushTagDialog: Component<PushTagDialogProps> = (props) => {
       <div class="tag-modal-card">
         <div class="tag-modal-header">
           <h3>Push Tag '{props.tag.name}' to Remote</h3>
-          <button class="tags-btn" onClick={props.onClose}>
-            ✕
+          <button class="tags-btn" onClick={props.onClose} aria-label="Close">
+            <Icon name="close" size={14} />
           </button>
         </div>
         <div class="tag-modal-body">
@@ -493,8 +494,8 @@ const DeleteLocalTagDialog: Component<DeleteLocalTagDialogProps> = (props) => {
       <div class="tag-modal-card">
         <div class="tag-modal-header">
           <h3>Delete Local Tag</h3>
-          <button class="tags-btn" onClick={props.onClose}>
-            ✕
+          <button class="tags-btn" onClick={props.onClose} aria-label="Close">
+            <Icon name="close" size={14} />
           </button>
         </div>
         <div class="tag-modal-body">
@@ -558,8 +559,8 @@ const DeleteRemoteTagDialog: Component<DeleteRemoteTagDialogProps> = (props) => 
       <div class="tag-modal-card">
         <div class="tag-modal-header">
           <h3>Delete Remote Tag</h3>
-          <button class="tags-btn" onClick={props.onClose}>
-            ✕
+          <button class="tags-btn" onClick={props.onClose} aria-label="Close">
+            <Icon name="close" size={14} />
           </button>
         </div>
         <div class="tag-modal-body">

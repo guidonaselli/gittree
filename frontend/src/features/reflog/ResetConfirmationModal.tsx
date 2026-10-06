@@ -1,5 +1,6 @@
 import { type Component, createSignal, Show, onMount, onCleanup } from "solid-js";
 import type { ReflogEntry, ResetMode } from "../../api/types";
+import { Icon } from "../../ui/Icon";
 
 export interface ResetConfirmationModalProps {
   targetRef: string;
@@ -57,7 +58,7 @@ export const ResetConfirmationModal: Component<ResetConfirmationModalProps> = (p
             disabled={isSubmitting()}
             aria-label="Close"
           >
-            ✕
+            <Icon name="close" size={14} />
           </button>
         </div>
 
@@ -128,7 +129,10 @@ export const ResetConfirmationModal: Component<ResetConfirmationModalProps> = (p
 
         <Show when={mode() === "hard"}>
           <div class="reset-hard-warning">
-            <div class="reset-hard-title">⚠️ Warning: Destructive Action</div>
+            <div class="reset-hard-title">
+              <Icon name="warning" size={16} />
+              <span>Warning: Destructive Action</span>
+            </div>
             <div>
               Hard reset permanently overwrites files in your working directory to match the target commit.
               Any uncommitted modifications will be discarded and cannot be recovered by Git.

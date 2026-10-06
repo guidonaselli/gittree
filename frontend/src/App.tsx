@@ -20,6 +20,7 @@ import {
   initRepository,
   isHeadPublished,
   removeBookmark,
+  pickFolder,
   resolveRepositoryRoot,
   saveSettings,
   stageWorkingCopyPaths,
@@ -34,7 +35,7 @@ import {
   type HistoryScope,
 } from "./api/commands";
 import { onDesktopThemeChanged, onUserThemesChanged, onRepositoryChanged, onWatchDegraded, onAskpassPrompt } from "./api/events";
-import { branchLabel, isKnown, type AskpassPromptPayload, type Bookmark, type RepositoryState, type Resolved, type SubmoduleMatrixResult, type WorkingCopyStatus } from "./api/types";
+import { branchLabel, isKnown, type AskpassPromptPayload, type Bookmark, type RepositoryState, type Resolved, type Settings, type SubmoduleMatrixResult, type WorkingCopyStatus } from "./api/types";
 import { WorkingCopyView } from "./features/working-copy/WorkingCopyView";
 import { HistoryView } from "./features/history/HistoryView";
 import { BranchesView } from "./features/branches/BranchesView";
@@ -54,6 +55,8 @@ import { ConflictMarkerGuardModal } from "./features/conflicts/ConflictMarkerGua
 import { CommandPalette, type CommandPaletteItem } from "./features/command-palette/CommandPalette";
 import { KeybindingsModal } from "./keybindings/KeybindingsModal";
 import { CommandErrorModal } from "./features/command-error/CommandErrorModal";
+import { SettingsModal } from "./features/settings/SettingsModal";
+import { Icon } from "./ui/Icon";
 import {
   getEffectiveShortcut,
   loadCustomBindings,
@@ -115,6 +118,7 @@ export const App: Component = () => {
   const [showPushModal, setShowPushModal] = createSignal(false);
   const [showCommandPalette, setShowCommandPalette] = createSignal(false);
   const [showKeybindingsModal, setShowKeybindingsModal] = createSignal(false);
+  const [showSettingsModal, setShowSettingsModal] = createSignal(false);
   const [customKeybindings, setCustomKeybindings] = createSignal<Record<string, string>>(loadCustomBindings());
   const [activeCommandError, setActiveCommandError] = createSignal<{
     title?: string;
@@ -144,7 +148,7 @@ export const App: Component = () => {
   const workingCopyCache = new Map<string, Resolved<WorkingCopyStatus>>();
 
   const [bookmarks, { refetch: refetchBookmarks }] = createResource(getBookmarks);
-  const [settingsResult] = createResource(getSettings);
+  const [settingsResult, { refetch: refetchSettings }] = createResource(getSettings);
   const [operationLog, { refetch: refetchOperationLog }] = createResource(() => workspace.state().groups.length > 0, () =>
     getOperationLog(),
   );
@@ -379,7 +383,31 @@ export const App: Component = () => {
     const current = settingsResult()?.settings ?? { concurrency: 8, theme: null };
     const next = { ...current, theme: theme === "system" ? null : theme };
     await saveSettings(next);
+    await refetchSettings();
     applyTheme(next.theme);
+  }
+
+  async function handleSaveSettings(next: Settings) {
+    await saveSettings(next);
+    await refetchSettings();
+    applyTheme(next.theme);
+  }
+
+  async function handleRemoveBookmark(root: string) {
+    await removeBookmark(root);
+    await refetchBookmarks();
+  }
+
+  async function handleBrowse() {
+    try {
+      const selected = await pickFolder();
+      if (selected) {
+        setPathInput(selected);
+        await openPath(selected);
+      }
+    } catch (e) {
+      setOpenError(String(e));
+    }
   }
 
   let unlistenChanged: (() => void) | undefined;
@@ -443,7 +471,13 @@ export const App: Component = () => {
         return;
       }
 
-      if (showCommandPalette() || showKeybindingsModal()) return;
+      if ((e.ctrlKey || e.metaKey) && e.key === ",") {
+        e.preventDefault();
+        setShowSettingsModal((prev) => !prev);
+        return;
+      }
+
+      if (showCommandPalette() || showKeybindingsModal() || showSettingsModal()) return;
 
       const groupId = workspace.activeGroup()?.id;
       if (groupId && e.ctrlKey && e.key === "Tab") {
@@ -767,6 +801,14 @@ export const App: Component = () => {
       onExecute: refreshAll,
     });
     items.push({
+      id: "general-settings",
+      title: "Preferences: Open Settings",
+      category: "General",
+      shortcut: "Ctrl+,",
+      available: true,
+      onExecute: () => setShowSettingsModal(true),
+    });
+    items.push({
       id: "general-shortcuts",
       title: "Keyboard Shortcuts",
       category: "General",
@@ -799,7 +841,8 @@ export const App: Component = () => {
           title="Command Palette (Ctrl+K)"
           aria-label="Command Palette"
         >
-          🔍 Command Palette
+          <Icon name="search" size={14} />
+          <span>Palette</span>
         </button>
         <button
           type="button"
@@ -808,11 +851,23 @@ export const App: Component = () => {
           title="Keyboard Shortcuts"
           aria-label="Keyboard Shortcuts"
         >
-          ⌨ Shortcuts
+          <Icon name="terminal" size={14} />
+          <span>Shortcuts</span>
+        </button>
+        <button
+          type="button"
+          class="collapse-toggle"
+          onClick={() => setShowSettingsModal(true)}
+          title="Preferences (Ctrl+,)"
+          aria-label="Preferences"
+        >
+          <Icon name="settings" size={14} />
+          <span>Settings</span>
         </button>
         <Show when={workspace.activeGroup()}>
-          <button class="collapse-toggle" onClick={refreshAll}>
-            Refresh
+          <button class="collapse-toggle" onClick={refreshAll} title="Refresh (Ctrl+R)">
+            <Icon name="refresh" size={14} />
+            <span>Refresh</span>
           </button>
           <button class="collapse-toggle" onClick={() => void toggleBookmark(workspace.activeGroup()!.rootPath)}>
             {bookmarks()?.some((b) => b.root === workspace.activeGroup()!.rootPath) ? "Remove bookmark" : "Add bookmark"}
@@ -847,7 +902,8 @@ export const App: Component = () => {
 
       <Show when={(userThemesResult()?.errors.length ?? 0) > 0}>
         <div class="user-theme-error-banner" role="alert">
-          <span>⚠️ Theme error:</span>
+          <Icon name="warning" size={14} />
+          <span>Theme error:</span>
           <For each={userThemesResult()?.errors}>
             {(err) => (
               <span class="user-theme-error-item">
@@ -901,7 +957,18 @@ export const App: Component = () => {
                 }}
                 ref={setPathInputEl}
               />
-              <button onClick={() => void openPath(pathInput())}>Open</button>
+              <div class="open-repo-actions">
+                <button type="button" onClick={() => void openPath(pathInput())}>Open</button>
+                <button
+                  type="button"
+                  onClick={() => void handleBrowse()}
+                  title="Browse local folder"
+                  aria-label="Browse local folder"
+                >
+                  <Icon name="folder-open" size={14} />
+                  <span>Browse…</span>
+                </button>
+              </div>
               <Show when={openError()}>
                 <div class="text-danger">{openError()}</div>
               </Show>
@@ -950,7 +1017,32 @@ export const App: Component = () => {
             {sidebarCollapsed() ? "Show sidebar" : "Hide sidebar"}
           </button>
 
-          <Show when={workspace.activeGroup()} fallback={<p class="text-muted">Open a repository to begin.</p>}>
+          <Show
+            when={workspace.activeGroup()}
+            fallback={
+              <div class="empty-workspace">
+                <Icon name="folder-open" size={48} class="empty-workspace-icon" />
+                <div class="empty-workspace-title">No repository open</div>
+                <div class="empty-workspace-desc">
+                  Open an existing Git repository from disk, or choose an action from the command palette.
+                </div>
+                <div class="empty-workspace-actions">
+                  <button type="button" class="empty-workspace-btn" onClick={() => void handleBrowse()}>
+                    <Icon name="folder-open" size={16} />
+                    <span>Open Repository…</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="empty-workspace-btn-secondary"
+                    onClick={() => setShowCommandPalette(true)}
+                  >
+                    <Icon name="search" size={16} />
+                    <span>Command Palette (Ctrl+K)</span>
+                  </button>
+                </div>
+              </div>
+            }
+          >
             <Show when={repoState()}>
               {(state) => (
                 <RepositoryStatus
@@ -1230,6 +1322,20 @@ export const App: Component = () => {
           />
         )}
       </Show>
+
+      <SettingsModal
+        isOpen={showSettingsModal()}
+        onClose={() => setShowSettingsModal(false)}
+        settings={settingsResult()?.settings ?? { concurrency: 8, theme: null }}
+        onSaveSettings={handleSaveSettings}
+        userThemesResult={userThemesResult()}
+        bookmarks={bookmarks() ?? []}
+        onRemoveBookmark={handleRemoveBookmark}
+        onOpenBookmark={(root: string) => {
+          setShowSettingsModal(false);
+          void openPath(root);
+        }}
+      />
     </div>
   );
 };

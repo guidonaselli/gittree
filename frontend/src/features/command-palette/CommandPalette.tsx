@@ -9,6 +9,7 @@ import {
   Show,
 } from "solid-js";
 import "./command-palette.css";
+import { Icon } from "../../ui/Icon";
 
 export interface CommandPaletteItem {
   id: string;
@@ -127,7 +128,7 @@ export const CommandPalette: Component<CommandPaletteProps> = (props) => {
           onKeyDown={handleKeyDown}
         >
           <div class="command-palette-search-box">
-            <span class="command-palette-search-icon" aria-hidden="true">🔍</span>
+            <Icon name="search" size={16} class="command-palette-search-icon" />
             <input
               ref={inputRef}
               type="text"
@@ -148,7 +149,7 @@ export const CommandPalette: Component<CommandPaletteProps> = (props) => {
               title="Close (Esc)"
               aria-label="Close"
             >
-              ✕
+              <Icon name="close" size={14} />
             </button>
           </div>
 

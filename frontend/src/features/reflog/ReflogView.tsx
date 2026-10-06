@@ -12,6 +12,7 @@ import { getReflog, resetToReflog, getBranches, createBranch } from "../../api/c
 import type { ReflogEntry, ResetMode, ResetOutcome } from "../../api/types";
 import { ResetConfirmationModal } from "./ResetConfirmationModal";
 import "./reflog.css";
+import { Icon } from "../../ui/Icon";
 
 export interface ReflogViewProps {
   root: string;
@@ -291,8 +292,9 @@ export const ReflogView: Component<ReflogViewProps> = (props) => {
                 <button
                   class="collapse-toggle"
                   onClick={() => setCreatingBranchFor(null)}
+                  aria-label="Close"
                 >
-                  ✕
+                  <Icon name="close" size={14} />
                 </button>
               </div>
 

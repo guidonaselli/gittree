@@ -2,6 +2,7 @@ import { createSignal, onMount, Show, type Component } from "solid-js";
 import type { AskpassPromptPayload } from "../../api/types";
 import { useModalEscape } from "../../layout/modal-escape";
 import "./sync.css";
+import { Icon } from "../../ui/Icon";
 
 export interface AskpassModalProps {
   prompt: AskpassPromptPayload;
@@ -53,7 +54,7 @@ export const AskpassModal: Component<AskpassModalProps> = (props) => {
             {getTitle()}
           </h2>
           <button class="collapse-toggle" onClick={() => props.onCancel(props.prompt.id)} aria-label="Cancel">
-            ✕
+            <Icon name="close" size={14} />
           </button>
         </div>
 

@@ -4,6 +4,7 @@ import type { PushForceMode, PushOptions, RemoteInfo, PushOutcome } from "../../
 import { PushRejectedModal } from "./PushRejectedModal";
 import { useModalEscape } from "../../layout/modal-escape";
 import "./sync.css";
+import { Icon } from "../../ui/Icon";
 
 export interface PushModalProps {
   root: string;
@@ -111,7 +112,7 @@ export const PushModal: Component<PushModalProps> = (props) => {
                 Push to Remote
               </h2>
               <button class="collapse-toggle" onClick={props.onClose} aria-label="Close">
-                ✕
+                <Icon name="close" size={14} />
               </button>
             </div>
 
@@ -218,7 +219,10 @@ export const PushModal: Component<PushModalProps> = (props) => {
 
               <Show when={forceKind() === "bare_force"}>
                 <div class="sync-danger-alert">
-                  <div class="sync-danger-title">⚠️ DESTRUCTIVE ACTION WARNING</div>
+                  <div class="sync-danger-title">
+                    <Icon name="warning" size={16} />
+                    <span>DESTRUCTIVE ACTION WARNING</span>
+                  </div>
                   <div>
                     Bare force push can destroy commits made by other contributors on the remote repository.
                     GitTree requires explicit acknowledgement before proceeding.
@@ -268,7 +272,7 @@ export const PushModal: Component<PushModalProps> = (props) => {
                     <div class="sync-outcome-item success">
                       <div class="sync-outcome-header">
                         <span>Push Successful</span>
-                        <span>✓</span>
+                        <Icon name="check" size={16} />
                       </div>
                       <div class="sync-outcome-summary">
                         {(outcome() as { summary: string }).summary}

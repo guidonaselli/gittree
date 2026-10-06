@@ -1,5 +1,6 @@
 import { type Component } from "solid-js";
 import "./sync.css";
+import { Icon } from "../../ui/Icon";
 
 export interface PushRejectedModalProps {
   remoteMessage: string;
@@ -16,7 +17,7 @@ export const PushRejectedModal: Component<PushRejectedModalProps> = (props) => {
             Push Rejected (Non-Fast-Forward)
           </h2>
           <button class="collapse-toggle" onClick={props.onClose} aria-label="Close">
-            ✕
+            <Icon name="close" size={14} />
           </button>
         </div>
 
