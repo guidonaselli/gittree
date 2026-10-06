@@ -776,7 +776,8 @@ export const App: Component = () => {
     <div class="app-shell">
       <header class="app-titlebar" role="banner">
         <div class="app-title-brand">
-          <img src="/logo.png" alt="GitTree" class="app-title-logo" />
+          <img src="/logo.png" alt="GitTree" class="app-title-logo app-title-logo-light" />
+          <img src="/logo-dark.png" alt="" class="app-title-logo app-title-logo-dark" />
           <span>GitTree</span>
         </div>
         <button

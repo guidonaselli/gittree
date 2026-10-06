@@ -1,0 +1,4 @@
+vtracer
+potracer
+numpy
+scipy

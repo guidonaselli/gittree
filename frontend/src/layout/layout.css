@@ -28,6 +28,27 @@
   object-fit: contain;
 }
 
+.app-title-logo-dark {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .app-title-logo-light {
+    display: none;
+  }
+  :root:not([data-theme="light"]) .app-title-logo-dark {
+    display: inline;
+  }
+}
+
+:root[data-theme="dark"] .app-title-logo-light {
+  display: none;
+}
+
+:root[data-theme="dark"] .app-title-logo-dark {
+  display: inline;
+}
+
 .app-body {
   flex: 1 1 auto;
   display: flex;
