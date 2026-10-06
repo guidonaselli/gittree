@@ -1,9 +1,9 @@
 mod askpass;
 mod desktop_theme;
 mod settings;
+mod updater;
 mod user_themes;
 mod watcher;
-mod updater;
 
 use std::path::PathBuf;
 use std::sync::Arc;
