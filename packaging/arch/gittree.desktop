@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=GitTree
+Comment=Git and submodule workspace client
+Exec=gittree %U
+Icon=gittree
+Terminal=false
+Type=Application
+Categories=Development;RevisionControl;
+StartupWMClass=gittree

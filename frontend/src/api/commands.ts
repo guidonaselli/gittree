@@ -811,5 +811,6 @@ export function getUserThemesDir(): Promise<string> {
   return invoke<string>("get_user_themes_dir");
 }
 
-
-
+export function getCliRepoArg(): Promise<string | null> {
+  return invoke<string | null>("get_cli_repo_arg");
+}

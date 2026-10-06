@@ -1338,6 +1338,22 @@ async fn reset_to_reflog(
     reset_to_reflog_entry(&state.process_layer, &PathBuf::from(root), &options).await
 }
 
+#[tauri::command]
+fn get_cli_repo_arg() -> Option<String> {
+    for arg in std::env::args().skip(1) {
+        if !arg.starts_with('-') {
+            let p = PathBuf::from(&arg);
+            if p.exists() {
+                if let Ok(canon) = p.canonicalize() {
+                    return Some(canon.to_string_lossy().to_string());
+                }
+                return Some(arg);
+            }
+        }
+    }
+    None
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt::init();
@@ -1463,6 +1479,7 @@ pub fn run() {
             reset_to_reflog,
             get_user_themes,
             get_user_themes_dir,
+            get_cli_repo_arg,
         ])
         .setup(|app| {
             let askpass_server = match askpass::AskpassServer::start(app.handle().clone()) {

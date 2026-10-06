@@ -9,6 +9,7 @@ import {
   getCommitMessageTemplate,
   discardWorkingCopyPaths,
   cancelWorkingCopyStatus,
+  getCliRepoArg,
   getBookmarks,
   getDesktopPalette,
   getOperationLog,
@@ -360,6 +361,17 @@ export const App: Component = () => {
       const onChange = () => applyTheme(settingsResult()?.settings.theme);
       mq.addEventListener("change", onChange);
       onCleanup(() => mq.removeEventListener("change", onChange));
+    }
+  });
+
+  onMount(async () => {
+    try {
+      const cliRepo = await getCliRepoArg();
+      if (cliRepo) {
+        workspace.openRepository(cliRepo);
+      }
+    } catch {
+      // not running in tauri or no cli arg
     }
   });
 

@@ -6,3 +6,8 @@ src-tauri/gen/
 .DS_Store
 /.memsearch
 tsconfig.tsbuildinfo
+.playwright-out/
+packaging/arch/pkg/
+packaging/arch/src/
+packaging/arch/*.pkg.tar*
+
