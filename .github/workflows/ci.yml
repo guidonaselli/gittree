@@ -46,7 +46,15 @@ jobs:
       - name: X11 launch smoke test
         run: |
           cargo build -p gittree
-          xvfb-run --auto-servernum -- timeout 5 ./target/debug/gittree; test $? -eq 124 || (echo "app exited before the 5s window" && exit 1)
+          if xvfb-run --auto-servernum -- timeout 5 ./target/debug/gittree; then
+            echo "app unexpectedly exited within 5s" && exit 1
+          else
+            status=$?
+            if [ $status -ne 124 ]; then
+              echo "app exited with unexpected code $status" && exit 1
+            fi
+            echo "app successfully ran for 5s window without crashing"
+          fi
 
   frontend:
     runs-on: ubuntu-latest
