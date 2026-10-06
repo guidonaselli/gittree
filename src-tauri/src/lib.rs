@@ -816,7 +816,7 @@ fn get_desktop_palette() -> Result<Option<DesktopPalette>, String> {
 #[tauri::command]
 fn get_user_themes() -> Result<user_themes::UserThemesResult, String> {
     let dir = user_themes::default_user_themes_dir();
-    Ok(user_themes::load_user_themes(&dir))
+    Ok(user_themes::load_available_themes(&dir))
 }
 
 #[tauri::command]

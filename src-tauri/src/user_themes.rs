@@ -166,6 +166,45 @@ pub fn load_user_themes(dir: &Path) -> UserThemesResult {
     }
 }
 
+pub fn load_available_themes(user_dir: &Path) -> UserThemesResult {
+    let mut map: BTreeMap<String, UserThemeInfo> = BTreeMap::new();
+    let mut errors = Vec::new();
+
+    // Check system and repo-relative theme paths first
+    for candidate in [
+        PathBuf::from("/usr/share/gittree/themes"),
+        PathBuf::from("themes"),
+        PathBuf::from("../themes"),
+    ] {
+        if candidate.is_dir() {
+            let res = load_user_themes(&candidate);
+            for t in res.themes {
+                map.insert(t.id.clone(), t);
+            }
+            errors.extend(res.errors);
+        }
+    }
+
+    // User themes override and augment system themes
+    if user_dir.is_dir() {
+        let user_res = load_user_themes(user_dir);
+        for t in user_res.themes {
+            map.insert(t.id.clone(), t);
+        }
+        errors.extend(user_res.errors);
+    }
+
+    let mut themes: Vec<UserThemeInfo> = map.into_values().collect();
+    themes.sort_by(|a, b| a.name.cmp(&b.name));
+    errors.sort_by(|a, b| a.file.cmp(&b.file));
+
+    UserThemesResult {
+        themes_dir: user_dir.to_string_lossy().to_string(),
+        themes,
+        errors,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -258,5 +297,16 @@ mode = "dark"
         assert_eq!(result.themes[0].name, "Nord");
         assert_eq!(result.errors.len(), 1);
         assert_eq!(result.errors[0].file, "broken.toml");
+    }
+
+    #[test]
+    fn load_available_themes_finds_repo_themes() {
+        let empty_user_dir = tempfile::tempdir().unwrap();
+        let result = load_available_themes(empty_user_dir.path());
+        assert!(result.themes.len() >= 6);
+        let names: Vec<_> = result.themes.iter().map(|t| t.name.as_str()).collect();
+        assert!(names.contains(&"Catppuccin Mocha"));
+        assert!(names.contains(&"Nord"));
+        assert!(names.contains(&"Tokyo Night"));
     }
 }

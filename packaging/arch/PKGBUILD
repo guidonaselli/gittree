@@ -35,4 +35,9 @@ package() {
   if [ -f "$repo_root/LICENSE" ]; then
     install -Dm644 "$repo_root/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   fi
+
+  if [ -d "$repo_root/themes" ]; then
+    install -d "$pkgdir/usr/share/gittree/themes"
+    install -Dm644 "$repo_root/themes/"*.toml "$pkgdir/usr/share/gittree/themes/"
+  fi
 }
