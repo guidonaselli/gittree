@@ -25,6 +25,12 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - name: Configure Git identity for tests
+        run: |
+          git config --global user.email "ci@example.com"
+          git config --global user.name "CI Runner"
+          git config --global init.defaultBranch master
+
       - name: cargo fmt --check
         run: cargo fmt --check
 
