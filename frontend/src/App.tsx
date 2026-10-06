@@ -914,7 +914,7 @@ export const App: Component = () => {
         </div>
       </Show>
 
-      <Show when={workspace.state().groups.length > 0}>
+      <Show when={workspace.state().groups.length > 1}>
         <GroupSwitcher
           groups={workspace.state().groups}
           activeGroupId={workspace.state().activeGroupId}
@@ -924,12 +924,14 @@ export const App: Component = () => {
       </Show>
       <Show when={workspace.activeGroup()}>
         {(group) => (
-          <TabStrip
-            tabs={group().tabs}
-            activeTabId={group().activeTabId}
-            onSelect={(tabId) => workspace.setActiveTab(group().id, tabId)}
-            onClose={(tabId) => workspace.closeTab(group().id, tabId)}
-          />
+          <Show when={group().tabs.length > 1}>
+            <TabStrip
+              tabs={group().tabs}
+              activeTabId={group().activeTabId}
+              onSelect={(tabId) => workspace.setActiveTab(group().id, tabId)}
+              onClose={(tabId) => workspace.closeTab(group().id, tabId)}
+            />
+          </Show>
         )}
       </Show>
 

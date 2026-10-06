@@ -3,8 +3,10 @@
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  padding: var(--space-1) var(--space-2);
+  padding: var(--space-1) var(--space-3);
   overflow-x: auto;
+  min-height: var(--space-6);
+  flex-shrink: 0;
 }
 
 .group-switcher {
@@ -23,12 +25,19 @@
   align-items: center;
   border-radius: var(--radius-sm);
   background: transparent;
+  border: var(--border-width-thin) solid transparent;
   flex: 0 0 auto;
+}
+
+.group-chip:hover,
+.tab-chip:hover {
+  background: var(--color-bg-subtle);
 }
 
 .group-chip-active,
 .tab-chip-active {
   background: var(--color-bg-raised);
+  border-color: var(--color-border);
   box-shadow: var(--shadow-sm);
 }
 
@@ -36,7 +45,8 @@
 .tab-chip-label {
   background: none;
   border: none;
-  font: inherit;
+  font-family: inherit;
+  font-size: var(--font-size-xs);
   color: var(--color-text-muted);
   cursor: pointer;
   padding: var(--space-1) var(--space-2);
@@ -58,9 +68,11 @@
   border: none;
   color: var(--color-text-faint);
   cursor: pointer;
-  padding: 0 var(--space-2) 0 0;
-  font-size: var(--font-size-md);
+  padding: 0 var(--space-1) 0 0;
+  font-size: var(--font-size-sm);
   line-height: 1;
+  display: flex;
+  align-items: center;
 }
 
 .group-chip-close:hover,

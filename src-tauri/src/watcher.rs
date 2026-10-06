@@ -27,8 +27,71 @@ fn is_significant_git_path(relative: &Path) -> bool {
         || s.starts_with("logs/")
 }
 
-/// Only an allowlisted set of git-internal paths counts as a real change; everything else under `.git` is refresh noise.
+fn is_ignored_directory_component(comp: &str) -> bool {
+    matches!(
+        comp,
+        "node_modules"
+            | "target"
+            | ".idea"
+            | ".vscode"
+            | ".fleet"
+            | "dist"
+            | "build"
+            | "out"
+            | ".next"
+            | ".turbo"
+            | ".nuxt"
+            | ".gradle"
+            | ".cache"
+            | ".pnpm-store"
+    )
+}
+
+fn is_transient_editor_file(path: &Path) -> bool {
+    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+        if name.ends_with('~')
+            || name.starts_with(".#")
+            || name.ends_with(".swp")
+            || name.ends_with(".tmp")
+            || name == ".DS_Store"
+            || name.ends_with(".lock")
+            || name.ends_with(".log")
+        {
+            return true;
+        }
+    }
+    false
+}
+
 fn is_significant_change(path: &Path, git_dir: &Path) -> bool {
+    for comp in path.components() {
+        let name = comp.as_os_str().to_string_lossy();
+        if is_ignored_directory_component(&name) {
+            return false;
+        }
+    }
+
+    if is_transient_editor_file(path) {
+        return false;
+    }
+
+    let comps: Vec<_> = path.components().collect();
+    if let Some(git_idx) = comps.iter().position(|c| c.as_os_str() == ".git") {
+        let rest: PathBuf = comps[git_idx + 1..].iter().collect();
+        if rest.as_os_str().is_empty() {
+            return false;
+        }
+        if let Ok(rel_modules) = rest.strip_prefix("modules") {
+            let mod_comps: Vec<_> = rel_modules.components().collect();
+            if mod_comps.len() > 1 {
+                let submod_git_path: PathBuf = mod_comps[1..].iter().collect();
+                return is_significant_git_path(&submod_git_path);
+            }
+            return false;
+        }
+        return is_significant_git_path(&rest);
+    }
+
     match path.strip_prefix(git_dir) {
         Ok(relative) if relative.as_os_str().is_empty() => false,
         Ok(relative) => is_significant_git_path(relative),
@@ -299,6 +362,43 @@ mod tests {
             git_dir
         ));
         assert!(is_significant_change(Path::new("/repo/f.txt"), git_dir));
+    }
+
+    #[test]
+    fn ignored_directories_and_submodule_noise_are_filtered() {
+        let git_dir = Path::new("/repo/.git");
+        assert!(!is_significant_change(
+            Path::new("/repo/node_modules/pkg/index.js"),
+            git_dir
+        ));
+        assert!(!is_significant_change(
+            Path::new("/repo/.idea/workspace.xml"),
+            git_dir
+        ));
+        assert!(!is_significant_change(
+            Path::new("/repo/target/debug/app"),
+            git_dir
+        ));
+        assert!(!is_significant_change(
+            Path::new("/repo/submodule/.git/index"),
+            git_dir
+        ));
+        assert!(is_significant_change(
+            Path::new("/repo/submodule/.git/HEAD"),
+            git_dir
+        ));
+        assert!(!is_significant_change(
+            Path::new("/repo/.git/modules/submod/index"),
+            git_dir
+        ));
+        assert!(is_significant_change(
+            Path::new("/repo/.git/modules/submod/HEAD"),
+            git_dir
+        ));
+        assert!(is_significant_change(
+            Path::new("/repo/submodule/src/index.ts"),
+            git_dir
+        ));
     }
 
     #[test]
