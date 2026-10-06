@@ -299,7 +299,10 @@ mod tests {
             .expect("process layer returned error instead of GitResult");
 
         // Assert: no non-zero exit is reported as ok() or success
-        assert!(!result.ok(), "A non-zero exit status must NEVER be reported as ok()");
+        assert!(
+            !result.ok(),
+            "A non-zero exit status must NEVER be reported as ok()"
+        );
         assert_ne!(result.status, 0, "Exit status must be non-zero");
         assert!(
             !result.stderr.is_empty(),
@@ -314,7 +317,10 @@ mod tests {
         // Verify operation log recorded verbatim args, exit status and stderr
         let snapshot = layer.log.snapshot();
         let last = snapshot.last().expect("must have logged entry");
-        assert_eq!(last.args, vec!["log", "nonexistent-ref-surely-missing-4242"]);
+        assert_eq!(
+            last.args,
+            vec!["log", "nonexistent-ref-surely-missing-4242"]
+        );
         assert_eq!(last.exit_status, result.status);
         assert_eq!(last.stderr, result.stderr);
     }
