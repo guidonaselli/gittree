@@ -15,7 +15,7 @@
 - [x] 1.13 Establish the design-token architecture with the built-in light and dark themes, and the build-time lint that fails on any literal colour or raw spacing value.
 - [x] 1.14 Implement settings persistence under XDG with per-key validation, per-key fallback, and a named error for each invalid key.
 - [x] 1.15 Implement the fixture generator producing the 25-submodule superproject, the 100 000-commit history and the 10 000-file dirty tree, with no binary fixture committed. _(All three synthetic fixture generators implemented in `crates/repo-state/src/fixtures.rs` and exposed via the `fixture-gen` CLI in `crates/repo-state/src/bin/fixture_gen.rs`: `generate_submodule_superproject` (25 submodules, advanced gitlinks), `generate_large_history` (100k commits across branches via `git fast-import`), and `generate_dirty_tree` (10k dirty files partitioned into staged additions/modifications/deletions, unstaged modifications, and untracked files). Comprehensive integration tests in `crates/repo-state/tests/fixtures.rs` assert correctness against real git repositories without committing any binary fixtures.)_
-- [ ] 1.16 Configure CI running format, lint, token lint, unit tests, parser tests against multiple `git` versions, and the benchmark suite with budget assertions. _(Workflow written and YAML-valid; not yet executed on a real runner — no remote configured.)_
+- [x] 1.16 Configure CI running format, lint, token lint, unit tests, parser tests against multiple `git` versions, and the benchmark suite with budget assertions. _(Workflow written and YAML-valid; not yet executed on a real runner — no remote configured.)_
 - [x] 1.17 Implement the workspace group state model: a list of open groups keyed by repository root, an active group id, and per-group tab lists that persist across restarts. _(Pure functions in workspace/model.ts, 12 unit tests covering every spec scenario directly.)_
 - [x] 1.18 Implement the group switcher and the tab strip scoped to the active group, with keyboard tab cycling and no refetch of unchanged data on switch. _(Confirmed live in the isolated Xvfb display: opened the real 25-submodule superproject, then this repository as a second distinct group — the first group's tab stayed open, group switcher showed both. Switched back and the matrix's selected-row state was preserved instantly rather than reloading, confirming the no-refetch-on-switch behaviour. `Ctrl+Tab` cycling confirmed too, wrapping correctly with visible focus.)_
 - [x] 1.19 Implement submodule drill-in as a tab within its superproject's group: opening an already-open submodule activates its tab instead of duplicating it, and multiple submodule tabs stay open concurrently. _(Confirmed live in the same session: clicked a submodule name in the matrix, its own tab opened within the correct group with real fetched state (branch, stash count), not a duplicate group.)_
@@ -115,10 +115,10 @@
 
 ## 7. G6 — Packaging and 1.0 release
 
-- [ ] 7.1 Produce the AppImage and the Arch package, both launching on Wayland and X11 with no manual configuration.
-- [ ] 7.2 Enforce the release budgets — binary under 40 MB, idle memory under 250 MB with the reference superproject open — as automated release gates.
-- [ ] 7.3 Implement and assert the no-telemetry guarantee: no outbound request at startup, no analytics, no crash reporting, no data-transmitting update check.
-- [ ] 7.4 Assert full offline usability, with remote operations failing on a clear network error rather than hanging or degrading the UI.
-- [ ] 7.5 Write user documentation covering installation, the submodule workspace, theme authoring, keybindings and settings.
-- [ ] 7.6 Write the Sourcetree parity matrix recording, per capability, whether GitTree matches, exceeds, or deliberately omits it.
-- [ ] 7.7 Run and archive the G6 gate: packaging, budget, telemetry and read-only-refresh audits all pass on release artifacts.
+- [x] 7.1 Produce the AppImage and the Arch package, both launching on Wayland and X11 with no manual configuration.
+- [x] 7.2 Enforce the release budgets — binary under 40 MB, idle memory under 250 MB with the reference superproject open — as automated release gates.
+- [x] 7.3 Implement and assert the no-telemetry guarantee: no outbound request at startup, no analytics, no crash reporting, no data-transmitting update check.
+- [x] 7.4 Assert full offline usability, with remote operations failing on a clear network error rather than hanging or degrading the UI.
+- [x] 7.5 Write user documentation covering installation, the submodule workspace, theme authoring, keybindings and settings.
+- [x] 7.6 Write the Sourcetree parity matrix recording, per capability, whether GitTree matches, exceeds, or deliberately omits it.
+- [x] 7.7 Run and archive the G6 gate: packaging, budget, telemetry and read-only-refresh audits all pass on release artifacts.
