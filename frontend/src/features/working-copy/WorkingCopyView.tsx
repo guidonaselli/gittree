@@ -385,6 +385,16 @@ export const WorkingCopyView: Component<{
   const [scrollTop, setScrollTop] = createSignal(0);
   const [viewportHeight, setViewportHeight] = createSignal(800);
 
+  const [showScanning, setShowScanning] = createSignal(false);
+  createEffect(() => {
+    if (props.isScanning) {
+      const timer = setTimeout(() => setShowScanning(true), 400);
+      onCleanup(() => clearTimeout(timer));
+    } else {
+      setShowScanning(false);
+    }
+  });
+
   const [selection, setSelection] = createSignal<Selection>(null);
   const [discardTarget, setDiscardTarget] = createSignal<DiscardTarget>(null);
   const [ignorePath, setIgnorePath] = createSignal<string | null>(null);
@@ -539,7 +549,7 @@ export const WorkingCopyView: Component<{
   return (
     <Show when={known()} fallback={<div class="text-muted">working copy status unknown ({reason()})</div>}>
       <div ref={containerRef} class="working-copy" onScroll={handleScroll}>
-        <Show when={props.isScanning}>
+        <Show when={showScanning()}>
           <div class="working-copy-scan-banner">
             <span class="working-copy-scan-text">Scanning working copy...</span>
             <Show when={props.onCancelScan}>

@@ -16,8 +16,9 @@
         "title": "GitTree",
         "width": 1280,
         "height": 800,
-        "minWidth": 1280,
-        "minHeight": 720
+        "minWidth": 800,
+        "minHeight": 500,
+        "decorations": false
       }
     ],
     "security": {

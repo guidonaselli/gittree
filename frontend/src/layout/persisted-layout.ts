@@ -39,5 +39,5 @@ export function useSidebarCollapsed() {
 }
 
 export function useDetailPanelCollapsed() {
-  return persistedSignal<boolean>("gittree.layout.detailPanelCollapsed", false);
+  return persistedSignal<boolean>("gittree.layout.detailPanelCollapsed", true);
 }

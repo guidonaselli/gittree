@@ -24,7 +24,6 @@ fn is_significant_git_path(relative: &Path) -> bool {
     s.starts_with("refs/")
         || s.starts_with("rebase-merge")
         || s.starts_with("rebase-apply")
-        || s.starts_with("logs/")
 }
 
 fn is_ignored_directory_component(comp: &str) -> bool {
@@ -44,6 +43,16 @@ fn is_ignored_directory_component(comp: &str) -> bool {
             | ".gradle"
             | ".cache"
             | ".pnpm-store"
+            | "log"
+            | "logs"
+            | "__pycache__"
+            | ".pytest_cache"
+            | ".venv"
+            | "venv"
+            | ".tox"
+            | "coverage"
+            | ".svelte-kit"
+            | ".angular"
     )
 }
 
@@ -357,7 +366,7 @@ mod tests {
             Path::new("/repo/.git/refs/heads/main"),
             git_dir
         ));
-        assert!(is_significant_change(
+        assert!(!is_significant_change(
             Path::new("/repo/.git/logs/HEAD"),
             git_dir
         ));

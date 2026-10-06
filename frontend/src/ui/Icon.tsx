@@ -22,7 +22,14 @@ export type IconName =
   | "trash"
   | "arrow-up"
   | "arrow-down"
-  | "arrow-up-down";
+  | "arrow-up-down"
+  | "star"
+  | "list"
+  | "tag"
+  | "package"
+  | "archive"
+  | "history"
+  | "edit";
 
 export interface IconProps {
   name: IconName;
@@ -147,6 +154,40 @@ export const Icon: Component<IconProps> = (props) => {
           <polyline points="4 7 8 3 12 7" />
           <line x1="16" y1="21" x2="16" y2="7" />
           <polyline points="12 17 16 21 20 17" />
+        </Match>
+        <Match when={props.name === "star"}>
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+        </Match>
+        <Match when={props.name === "list"}>
+          <line x1="8" y1="6" x2="21" y2="6" />
+          <line x1="8" y1="12" x2="21" y2="12" />
+          <line x1="8" y1="18" x2="21" y2="18" />
+          <line x1="3" y1="6" x2="3.01" y2="6" />
+          <line x1="3" y1="12" x2="3.01" y2="12" />
+          <line x1="3" y1="18" x2="3.01" y2="18" />
+        </Match>
+        <Match when={props.name === "tag"}>
+          <path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z" />
+          <line x1="7" y1="7" x2="7.01" y2="7" />
+        </Match>
+        <Match when={props.name === "package"}>
+          <path d="m16.5 9.4-9-5.19M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+          <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+          <line x1="12" y1="22.08" x2="12" y2="12" />
+        </Match>
+        <Match when={props.name === "archive"}>
+          <polyline points="21 8 21 21 3 21 3 8" />
+          <rect width="22" height="5" x="1" y="3" rx="1" />
+          <line x1="10" y1="12" x2="14" y2="12" />
+        </Match>
+        <Match when={props.name === "history"}>
+          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+          <path d="M3 3v5h5" />
+          <polyline points="12 7 12 12 15 15" />
+        </Match>
+        <Match when={props.name === "edit"}>
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
         </Match>
       </Switch>
     </svg>

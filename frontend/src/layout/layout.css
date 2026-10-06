@@ -8,18 +8,143 @@
   height: var(--titlebar-height);
   display: flex;
   align-items: center;
-  padding: 0 var(--space-3);
+  justify-content: space-between;
+  padding: 0 var(--space-2) 0 var(--space-3);
   background: var(--color-bg-subtle);
   border-bottom: var(--border-width-thin) solid var(--color-border);
   font-weight: var(--font-weight-medium);
   gap: var(--space-2);
   flex: 0 0 auto;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.app-title-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  flex: 0 1 auto;
 }
 
 .app-title-brand {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.brand-text {
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-md);
+  color: var(--color-text);
+}
+
+.app-title-repo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.app-title-separator {
+  color: var(--color-text-faint);
+  font-size: var(--font-size-sm);
+}
+
+.repo-name {
+  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repo-branch-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  background: var(--color-bg-inset);
+  border-radius: var(--radius-pill);
+  font-size: var(--font-size-xs);
+  color: var(--color-accent);
+  font-weight: var(--font-weight-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 180px;
+}
+
+.app-title-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.app-title-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: 0 0 auto;
+}
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-5);
+  height: var(--space-5);
+}
+
+.icon-btn:hover {
+  background: var(--color-bg-inset);
+  color: var(--color-text);
+}
+
+.icon-btn.active {
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+}
+
+.window-controls {
+  display: flex;
+  align-items: center;
+  margin-left: var(--space-2);
+  border-left: var(--border-width-thin) solid var(--color-border);
+  padding-left: var(--space-1);
+}
+
+.window-ctrl-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  width: var(--space-5);
+  height: var(--space-5);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+}
+
+.window-ctrl-btn:hover {
+  background: var(--color-bg-inset);
+  color: var(--color-text);
+}
+
+.window-ctrl-btn.close-btn:hover {
+  background: var(--color-danger);
+  color: var(--color-accent-text);
 }
 
 .app-title-logo {

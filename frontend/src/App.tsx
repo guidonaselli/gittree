@@ -35,7 +35,7 @@ import {
   type HistoryScope,
 } from "./api/commands";
 import { onDesktopThemeChanged, onUserThemesChanged, onRepositoryChanged, onWatchDegraded, onAskpassPrompt } from "./api/events";
-import { branchLabel, isKnown, type AskpassPromptPayload, type Bookmark, type RepositoryState, type Resolved, type Settings, type SubmoduleMatrixResult, type WorkingCopyStatus } from "./api/types";
+import { branchLabel, isKnown, type AskpassPromptPayload, type RepositoryState, type Resolved, type Settings, type SubmoduleMatrixResult, type WorkingCopyStatus } from "./api/types";
 import { WorkingCopyView } from "./features/working-copy/WorkingCopyView";
 import { HistoryView } from "./features/history/HistoryView";
 import { BranchesView } from "./features/branches/BranchesView";
@@ -48,8 +48,10 @@ import { PushModal } from "./features/sync/PushModal";
 import { AskpassModal } from "./features/sync/AskpassModal";
 import { PALETTE_TOKENS, resolveTheme } from "./theme/apply-palette";
 import { OperationLogView } from "./features/operation-log/OperationLogView";
-import { RepositoryStatus } from "./features/repository/RepositoryStatus";
+import { RepositorySidebar, type NavView } from "./features/repository/RepositorySidebar";
 import { SubmoduleMatrix } from "./features/submodules/SubmoduleMatrix";
+import { SyncToolbar } from "./features/sync/SyncToolbar";
+import { minimizeWindow, toggleMaximizeWindow, closeWindow } from "./window";
 import { ActiveOperationBanner } from "./features/integration/ActiveOperationBanner";
 import { ConflictMarkerGuardModal } from "./features/conflicts/ConflictMarkerGuardModal";
 import { CommandPalette, type CommandPaletteItem } from "./features/command-palette/CommandPalette";
@@ -86,17 +88,6 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
-function groupBookmarks(bookmarks: Bookmark[]): Map<string, Bookmark[]> {
-  const groups = new Map<string, Bookmark[]>();
-  const sorted = [...bookmarks].sort((a, b) => a.order - b.order);
-  for (const b of sorted) {
-    const key = b.group ?? "";
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(b);
-  }
-  return groups;
-}
-
 export const App: Component = () => {
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth();
   const [sidebarCollapsed, setSidebarCollapsed] = useSidebarCollapsed();
@@ -105,7 +96,7 @@ export const App: Component = () => {
 
   const [pathInput, setPathInput] = createSignal("");
   const [openError, setOpenError] = createSignal<string | null>(null);
-  const [mainView, setMainView] = createSignal<"working-copy" | "history" | "branches" | "tags" | "stashes" | "reflog">("working-copy");
+  const [mainView, setMainView] = createSignal<NavView>("working-copy");
   const [reflogTargetRef, setReflogTargetRef] = createSignal<string>("HEAD");
   const [historyScope, setHistoryScope] = createSignal<HistoryScope | undefined>(undefined);
   const [stageError, setStageError] = createSignal<string | null>(null);
@@ -190,6 +181,11 @@ export const App: Component = () => {
     }
   );
 
+  const aheadBehind = createMemo(() => {
+    const s = repoState();
+    return s && isKnown(s.ahead_behind) ? s.ahead_behind.value : null;
+  });
+
   function hasUncommittedChanges(): boolean {
     const status = workingCopy();
     if (!status || !isKnown(status)) return false;
@@ -199,13 +195,17 @@ export const App: Component = () => {
 
   const [commitMessageTemplate] = createResource(activeViewPath, getCommitMessageTemplate);
 
-  function invalidate(path: string) {
+  function invalidate(path: string, options: { submodules?: boolean } = {}) {
     repoCache.delete(path);
     workingCopyCache.delete(path);
-    submoduleCache.delete(path);
+    if (options.submodules) {
+      submoduleCache.delete(path);
+    }
     if (path === activeViewPath()) {
       refetchRepoState();
-      refetchSubmodules();
+      if (options.submodules) {
+        refetchSubmodules();
+      }
       refetchWorkingCopy();
       refetchActiveOperation();
     }
@@ -378,14 +378,6 @@ export const App: Component = () => {
       // not running in tauri or no cli arg
     }
   });
-
-  async function setTheme(theme: string) {
-    const current = settingsResult()?.settings ?? { concurrency: 8, theme: null };
-    const next = { ...current, theme: theme === "system" ? null : theme };
-    await saveSettings(next);
-    await refetchSettings();
-    applyTheme(next.theme);
-  }
 
   async function handleSaveSettings(next: Settings) {
     await saveSettings(next);
@@ -593,7 +585,7 @@ export const App: Component = () => {
 
   function refreshAll() {
     const path = activeViewPath();
-    if (path) invalidate(path);
+    if (path) invalidate(path, { submodules: true });
     refetchOperationLog();
   }
 
@@ -628,6 +620,14 @@ export const App: Component = () => {
       available: hasActiveRepo,
       unavailableReason: hasActiveRepo ? undefined : "No active repository open",
       onExecute: () => setMainView("history"),
+    });
+    items.push({
+      id: "nav-submodules",
+      title: "Go to Submodules",
+      category: "Navigation",
+      available: hasActiveRepo,
+      unavailableReason: hasActiveRepo ? undefined : "No active repository open",
+      onExecute: () => setMainView("submodules"),
     });
     items.push({
       id: "nav-branches",
@@ -828,76 +828,129 @@ export const App: Component = () => {
 
   return (
     <div class="app-shell">
-      <header class="app-titlebar" role="banner">
-        <div class="app-title-brand">
-          <img src="/logo.png" alt="GitTree" class="app-title-logo app-title-logo-light" />
-          <img src="/logo-dark.png" alt="" class="app-title-logo app-title-logo-dark" />
-          <span>GitTree</span>
+      <header class="app-titlebar" role="banner" data-tauri-drag-region>
+        <div class="app-title-left">
+          <div class="app-title-brand">
+            <img src="/logo.png" alt="GitTree" class="app-title-logo app-title-logo-light" />
+            <img src="/logo-dark.png" alt="" class="app-title-logo app-title-logo-dark" />
+            <span class="brand-text">GitTree</span>
+          </div>
+          <Show when={workspace.activeGroup()}>
+            {(group) => {
+              const repoBasename = () => {
+                const p = group().rootPath;
+                return p.split("/").filter(Boolean).pop() || p;
+              };
+              return (
+                <div class="app-title-repo">
+                  <span class="app-title-separator">/</span>
+                  <span class="repo-name" title={group().rootPath}>{repoBasename()}</span>
+                  <Show when={repoState()?.branch}>
+                    <span class="repo-branch-pill" title={`Branch: ${branchLabel(repoState()!.branch)}`}>
+                      <Icon name="branch" size={12} />
+                      <span class="branch-pill-name">{branchLabel(repoState()!.branch)}</span>
+                    </span>
+                  </Show>
+                </div>
+              );
+            }}
+          </Show>
         </div>
-        <button
-          type="button"
-          class="collapse-toggle"
-          onClick={() => setShowCommandPalette(true)}
-          title="Command Palette (Ctrl+K)"
-          aria-label="Command Palette"
-        >
-          <Icon name="search" size={14} />
-          <span>Palette</span>
-        </button>
-        <button
-          type="button"
-          class="collapse-toggle"
-          onClick={() => setShowKeybindingsModal(true)}
-          title="Keyboard Shortcuts"
-          aria-label="Keyboard Shortcuts"
-        >
-          <Icon name="terminal" size={14} />
-          <span>Shortcuts</span>
-        </button>
-        <button
-          type="button"
-          class="collapse-toggle"
-          onClick={() => setShowSettingsModal(true)}
-          title="Preferences (Ctrl+,)"
-          aria-label="Preferences"
-        >
-          <Icon name="settings" size={14} />
-          <span>Settings</span>
-        </button>
-        <Show when={workspace.activeGroup()}>
-          <button class="collapse-toggle" onClick={refreshAll} title="Refresh (Ctrl+R)">
-            <Icon name="refresh" size={14} />
-            <span>Refresh</span>
-          </button>
-          <button class="collapse-toggle" onClick={() => void toggleBookmark(workspace.activeGroup()!.rootPath)}>
-            {bookmarks()?.some((b) => b.root === workspace.activeGroup()!.rootPath) ? "Remove bookmark" : "Add bookmark"}
+
+        <div class="app-title-center">
+          <Show when={workspace.activeGroup() && repoState()}>
+            <SyncToolbar
+              onOpenFetch={() => setShowFetchModal(true)}
+              onOpenPull={() => setShowPullModal(true)}
+              onOpenPush={() => setShowPushModal(true)}
+              aheadCount={aheadBehind()?.ahead}
+              behindCount={aheadBehind()?.behind}
+              isSyncing={isSyncing()}
+              onCancelSync={handleCancelSync}
+            />
+          </Show>
+        </div>
+
+        <div class="app-title-right">
+          <Show when={workspace.activeGroup()}>
+            <button
+              type="button"
+              class="icon-btn"
+              onClick={refreshAll}
+              title="Refresh (Ctrl+R)"
+              aria-label="Refresh"
+            >
+              <Icon name="refresh" size={14} />
+            </button>
+          </Show>
+          <button
+            type="button"
+            class="icon-btn"
+            onClick={() => setShowCommandPalette(true)}
+            title="Command Palette (Ctrl+K)"
+            aria-label="Command Palette"
+          >
+            <Icon name="search" size={14} />
           </button>
           <button
-            class="collapse-toggle"
-            aria-expanded={!detailCollapsed()}
-            onClick={() => setDetailCollapsed(!detailCollapsed())}
+            type="button"
+            class="icon-btn"
+            onClick={() => setShowKeybindingsModal(true)}
+            title="Keyboard Shortcuts"
+            aria-label="Keyboard Shortcuts"
           >
-            {detailCollapsed() ? "Show detail panel" : "Hide detail panel"}
+            <Icon name="terminal" size={14} />
           </button>
-        </Show>
-        <label class="theme-select">
-          Theme:
-          <select
-            value={settingsResult()?.settings.theme ?? "system"}
-            onChange={(e) => void setTheme(e.currentTarget.value)}
+          <button
+            type="button"
+            class="icon-btn"
+            onClick={() => setShowSettingsModal(true)}
+            title="Preferences (Ctrl+,)"
+            aria-label="Preferences"
           >
-            <option value="system">Follow Desktop</option>
-            <option value="light">Light (Built-in)</option>
-            <option value="dark">Dark (Built-in)</option>
-            <Show when={(userThemesResult()?.themes.length ?? 0) > 0}>
-              <optgroup label="User Themes">
-                <For each={userThemesResult()?.themes}>
-                  {(t) => <option value={t.id}>{t.name}</option>}
-                </For>
-              </optgroup>
-            </Show>
-          </select>
-        </label>
+            <Icon name="settings" size={14} />
+          </button>
+          <Show when={workspace.activeGroup()}>
+            <button
+              type="button"
+              class={`icon-btn ${!detailCollapsed() ? "active" : ""}`}
+              onClick={() => setDetailCollapsed(!detailCollapsed())}
+              title={detailCollapsed() ? "Show Operation Log" : "Hide Operation Log"}
+              aria-label="Operation Log"
+            >
+              <Icon name="list" size={14} />
+            </button>
+          </Show>
+          <div class="window-controls">
+            <button
+              type="button"
+              class="window-ctrl-btn"
+              onClick={() => void minimizeWindow()}
+              title="Minimize"
+              aria-label="Minimize"
+            >
+              <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor"/></svg>
+            </button>
+            <button
+              type="button"
+              class="window-ctrl-btn"
+              onClick={() => void toggleMaximizeWindow()}
+              title="Maximize"
+              aria-label="Maximize"
+            >
+              <svg width="9" height="9" viewBox="0 0 9 9"><rect x="0.5" y="0.5" width="8" height="8" fill="none" stroke="currentColor"/></svg>
+            </button>
+            <button
+              type="button"
+              class="window-ctrl-btn close-btn"
+              onClick={() => void closeWindow()}
+              title="Close"
+              aria-label="Close"
+            >
+              <svg width="9" height="9" viewBox="0 0 9 9"><line x1="0" y1="0" x2="9" y2="9" stroke="currentColor"/><line x1="9" y1="0" x2="0" y2="9" stroke="currentColor"/></svg>
+            </button>
+          </div>
+        </div>
       </header>
 
       <Show when={(userThemesResult()?.errors.length ?? 0) > 0}>
@@ -943,71 +996,38 @@ export const App: Component = () => {
         <Show when={!sidebarCollapsed()}>
           <nav
             class="pane-sidebar"
-            style={{ width: `${clamp(sidebarWidth(), 180, 480)}px` }}
-            aria-label="Repository bookmarks"
+            style={{ width: `${clamp(sidebarWidth(), 200, 480)}px` }}
+            aria-label="Repository navigation"
           >
-            <div class="repo-status" style={{ "flex-direction": "column", "align-items": "stretch" }}>
-              <label for="open-path-input">Open repository</label>
-              <input
-                id="open-path-input"
-                type="text"
-                placeholder="/path/to/repository"
-                value={pathInput()}
-                onInput={(e) => setPathInput(e.currentTarget.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void openPath(pathInput());
-                }}
-                ref={setPathInputEl}
-              />
-              <div class="open-repo-actions">
-                <button type="button" onClick={() => void openPath(pathInput())}>Open</button>
-                <button
-                  type="button"
-                  onClick={() => void handleBrowse()}
-                  title="Browse local folder"
-                  aria-label="Browse local folder"
-                >
-                  <Icon name="folder-open" size={14} />
-                  <span>Browse…</span>
-                </button>
-              </div>
-              <Show when={openError()}>
-                <div class="text-danger">{openError()}</div>
-              </Show>
-              <Show when={offerInitAt()}>
-                {(path) => (
-                  <div class="init-offer">
-                    <p class="text-muted">No repository found at {path()}.</p>
-                    <button onClick={() => void confirmInit(path())}>Initialize a repository here</button>
-                    <button class="collapse-toggle" onClick={() => setOfferInitAt(null)}>
-                      Cancel
-                    </button>
-                  </div>
-                )}
-              </Show>
-            </div>
-            <For each={[...groupBookmarks(bookmarks() ?? []).entries()]}>
-              {([group, items]) => (
-                <div class="bookmark-group">
-                  <Show when={group}>
-                    <div class="bookmark-group-label">{group}</div>
-                  </Show>
-                  <ul>
-                    <For each={items}>
-                      {(b) => (
-                        <li>
-                          <button class="collapse-toggle bookmark-item" onClick={() => void openPath(b.root)}>
-                            {b.root}
-                          </button>
-                        </li>
-                      )}
-                    </For>
-                  </ul>
-                </div>
-              )}
-            </For>
+            <RepositorySidebar
+              root={activeViewPath()}
+              repoState={repoState() ?? null}
+              activeView={mainView()}
+              onSelectView={(v) => {
+                if (v === "history") setHistoryScope(undefined);
+                if (v === "reflog") setReflogTargetRef("HEAD");
+                setMainView(v);
+              }}
+              workingCopyStatus={workingCopy() ?? null}
+              submoduleCount={submodules()?.submodules.length ?? 0}
+              bookmarks={bookmarks() ?? []}
+              isBookmarked={Boolean(workspace.activeGroup() && bookmarks()?.some((b) => b.root === workspace.activeGroup()!.rootPath))}
+              onToggleBookmark={() => {
+                const group = workspace.activeGroup();
+                if (group) void toggleBookmark(group.rootPath);
+              }}
+              onOpenRepo={(path) => void openPath(path)}
+              onBrowse={() => void handleBrowse()}
+              pathInput={pathInput()}
+              onPathInput={setPathInput}
+              openError={openError()}
+              offerInitAt={offerInitAt()}
+              onConfirmInit={(p) => void confirmInit(p)}
+              onCancelInit={() => setOfferInitAt(null)}
+              setPathInputEl={setPathInputEl}
+            />
           </nav>
-          <Resizer label="Resize sidebar" onResize={(d) => setSidebarWidth(clamp(sidebarWidth() + d, 180, 480))} />
+          <Resizer label="Resize sidebar" onResize={(d) => setSidebarWidth(clamp(sidebarWidth() + d, 200, 480))} />
         </Show>
 
         <main class="pane-content">
@@ -1045,25 +1065,6 @@ export const App: Component = () => {
               </div>
             }
           >
-            <Show when={repoState()}>
-              {(state) => (
-                <RepositoryStatus
-                  state={state()}
-                  onOpenBranches={() => setMainView("branches")}
-                  onOpenTags={() => setMainView("tags")}
-                  onOpenStashes={() => setMainView("stashes")}
-                  onOpenReflog={() => {
-                    setReflogTargetRef("HEAD");
-                    setMainView("reflog");
-                  }}
-                  onOpenFetch={() => setShowFetchModal(true)}
-                  onOpenPull={() => setShowPullModal(true)}
-                  onOpenPush={() => setShowPushModal(true)}
-                  isSyncing={isSyncing()}
-                  onCancelSync={handleCancelSync}
-                />
-              )}
-            </Show>
             <Show when={integrationNotice()}>
               {(msg) => (
                 <div class="integration-notice" style={{ padding: "var(--space-2) var(--space-4)", "background-color": "var(--color-bg-subtle)", "border-bottom": "1px solid var(--color-border-subtle)", display: "flex", "align-items": "center", "justify-content": "space-between" }}>
@@ -1086,56 +1087,6 @@ export const App: Component = () => {
                 />
               )}
             </Show>
-            <div class="main-view-switcher">
-              <button
-                class="collapse-toggle"
-                aria-pressed={mainView() === "working-copy"}
-                onClick={() => setMainView("working-copy")}
-              >
-                Working copy
-              </button>
-              <button
-                class="collapse-toggle"
-                aria-pressed={mainView() === "history"}
-                onClick={() => {
-                  setHistoryScope(undefined);
-                  setMainView("history");
-                }}
-              >
-                History
-              </button>
-              <button
-                class="collapse-toggle"
-                aria-pressed={mainView() === "branches"}
-                onClick={() => setMainView("branches")}
-              >
-                Branches
-              </button>
-              <button
-                class="collapse-toggle"
-                aria-pressed={mainView() === "tags"}
-                onClick={() => setMainView("tags")}
-              >
-                Tags
-              </button>
-              <button
-                class="collapse-toggle"
-                aria-pressed={mainView() === "stashes"}
-                onClick={() => setMainView("stashes")}
-              >
-                Stashes
-              </button>
-              <button
-                class="collapse-toggle"
-                aria-pressed={mainView() === "reflog"}
-                onClick={() => {
-                  setReflogTargetRef("HEAD");
-                  setMainView("reflog");
-                }}
-              >
-                Reflog
-              </button>
-            </div>
             <Show when={mainView() === "branches"}>
               <BranchesView
                 root={activeViewPath()!}
@@ -1218,17 +1169,21 @@ export const App: Component = () => {
                 )}
               </Show>
             </Show>
-            <Show when={submodules() && (submodules()!.submodules.length > 0 || submodules()!.malformed_entries.length > 0)}>
-              <SubmoduleMatrix
-                root={workspace.activeGroup()?.rootPath}
-                submodules={submodules()!.submodules}
-                malformedEntries={submodules()!.malformed_entries}
-                onDrillIn={drillIntoSubmodule}
-                onRefreshNeeded={() => refetchSubmodules()}
-              />
-            </Show>
-            <Show when={submodules.loading}>
-              <p class="text-muted">Loading submodules…</p>
+            <Show when={mainView() === "submodules"}>
+              <Show when={submodules()}>
+                {(submodData) => (
+                  <SubmoduleMatrix
+                    root={workspace.activeGroup()?.rootPath}
+                    submodules={submodData().submodules}
+                    malformedEntries={submodData().malformed_entries}
+                    onDrillIn={drillIntoSubmodule}
+                    onRefreshNeeded={() => refetchSubmodules()}
+                  />
+                )}
+              </Show>
+              <Show when={submodules.loading}>
+                <p class="text-muted" style={{ padding: "var(--space-4)" }}>Loading submodules…</p>
+              </Show>
             </Show>
           </Show>
         </main>
