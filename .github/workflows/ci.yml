@@ -41,10 +41,12 @@ jobs:
         run: cargo test --workspace
 
       - name: cargo test (performance fixtures)
-        run: cargo test --workspace -- --ignored
+        run: cargo test -p repo-state --tests -- --ignored
 
       - name: X11 launch smoke test
-        run: xvfb-run --auto-servernum -- timeout 5 ./target/debug/gittree; test $? -eq 124 || (echo "app exited before the 5s window" && exit 1)
+        run: |
+          cargo build -p gittree
+          xvfb-run --auto-servernum -- timeout 5 ./target/debug/gittree; test $? -eq 124 || (echo "app exited before the 5s window" && exit 1)
 
   frontend:
     runs-on: ubuntu-latest

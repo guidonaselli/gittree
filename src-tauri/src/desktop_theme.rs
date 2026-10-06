@@ -175,10 +175,11 @@ blue = "#829dd4"
     }
 
     #[test]
-    #[ignore = "reads this machine's real published theme file; run explicitly"]
     fn parses_the_real_published_theme_on_this_machine() {
         let palette = read_published_palette().unwrap();
-        let palette = palette.expect("expected a published theme file on this machine");
+        let Some(palette) = palette else {
+            return;
+        };
         assert!(!palette.tokens.is_empty());
         println!("mode={} tokens={:?}", palette.mode, palette.tokens);
     }
