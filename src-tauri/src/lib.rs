@@ -3,6 +3,7 @@ mod desktop_theme;
 mod settings;
 mod user_themes;
 mod watcher;
+mod updater;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -1363,6 +1364,23 @@ fn get_cli_repo_arg() -> Option<String> {
     None
 }
 
+#[tauri::command]
+async fn check_for_updates() -> Result<updater::UpdateCheckResult, String> {
+    updater::check_for_updates().await
+}
+
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    if !url.starts_with("https://") && !url.starts_with("http://") {
+        return Err("Invalid URL protocol".to_string());
+    }
+    std::process::Command::new("xdg-open")
+        .arg(&url)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt::init();
@@ -1490,6 +1508,8 @@ pub fn run() {
             get_user_themes,
             get_user_themes_dir,
             get_cli_repo_arg,
+            check_for_updates,
+            open_external_url,
         ])
         .setup(|app| {
             let askpass_server = match askpass::AskpassServer::start(app.handle().clone()) {

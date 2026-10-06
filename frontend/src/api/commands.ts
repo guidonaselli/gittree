@@ -44,6 +44,7 @@ import type {
   Resolved,
   RevertOptions,
   UserThemesResult,
+  UpdateCheckResult,
   RevertOutcome,
   Settings,
   SettingsLoadResult,
@@ -817,4 +818,12 @@ export function getUserThemesDir(): Promise<string> {
 
 export function getCliRepoArg(): Promise<string | null> {
   return invoke<string | null>("get_cli_repo_arg");
+}
+
+export function checkForUpdates(): Promise<UpdateCheckResult> {
+  return invoke<UpdateCheckResult>("check_for_updates");
+}
+
+export function openExternalUrl(url: string): Promise<void> {
+  return invoke<void>("open_external_url", { url });
 }

@@ -14,7 +14,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 git-process = { path = "../crates/git-process" }
 repo-state = { path = "../crates/repo-state" }
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["custom-protocol"] }
 tokio.workspace = true
 tokio-util.workspace = true
 serde.workspace = true
@@ -27,8 +27,6 @@ dirs.workspace = true
 toml = "1"
 rfd = { version = "0.17.2", features = ["xdg-portal"] }
 
-[features]
-custom-protocol = ["tauri/custom-protocol"]
 
 [dev-dependencies]
 tempfile = "3"

@@ -880,3 +880,12 @@ export interface UserThemesResult {
   errors: UserThemeParseError[];
 }
 
+export interface UpdateCheckResult {
+  current_version: string;
+  latest_version: string;
+  has_update: boolean;
+  release_url?: string | null;
+  release_name?: string | null;
+  published_at?: string | null;
+}
+

@@ -1,5 +1,6 @@
 import { type Component, For, Show, createSignal } from "solid-js";
 import { type Bookmark, type Settings, type UserThemesResult } from "../../api/types";
+import { checkForUpdates, openExternalUrl } from "../../api/commands";
 import { useModalEscape } from "../../layout/modal-escape";
 import { Icon } from "../../ui/Icon";
 import { getThemeSwatches } from "../../theme/swatch-theme";
@@ -21,6 +22,37 @@ export const SettingsModal: Component<SettingsModalProps> = (props) => {
   const [currentTheme, setCurrentTheme] = createSignal<string | null>(props.settings.theme);
   const [concurrency, setConcurrency] = createSignal<number>(props.settings.concurrency);
   const [savedMessage, setSavedMessage] = createSignal<string | null>(null);
+  const [updateStatus, setUpdateStatus] = createSignal<
+    | { state: "idle" }
+    | { state: "checking" }
+    | { state: "up-to-date"; version: string }
+    | { state: "available"; version: string; url?: string | null }
+    | { state: "error"; message: string }
+  >({ state: "idle" });
+
+  const handleCheckUpdates = async () => {
+    setUpdateStatus({ state: "checking" });
+    try {
+      const res = await checkForUpdates();
+      if (res.has_update) {
+        setUpdateStatus({
+          state: "available",
+          version: res.latest_version,
+          url: res.release_url,
+        });
+      } else {
+        setUpdateStatus({
+          state: "up-to-date",
+          version: res.current_version,
+        });
+      }
+    } catch (err) {
+      setUpdateStatus({
+        state: "error",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
 
   useModalEscape(() => props.onClose());
 
@@ -276,6 +308,77 @@ export const SettingsModal: Component<SettingsModalProps> = (props) => {
                   <span class="badge-tag">Zero Telemetry</span>
                   <span class="badge-tag">Wayland / X11</span>
                   <span class="badge-tag">Rust & Tauri 2</span>
+                </div>
+
+                <div class="settings-field" style={{ "margin-top": "var(--space-4)" }}>
+                  <div class="settings-field-label">Software Updates</div>
+
+                  <div style={{ "margin-top": "var(--space-2)", display: "flex", "align-items": "center", gap: "var(--space-3)", "flex-wrap": "wrap" }}>
+                    <button
+                      type="button"
+                      class="settings-btn-primary"
+                      disabled={updateStatus().state === "checking"}
+                      onClick={() => void handleCheckUpdates()}
+                    >
+                      <Icon name="refresh" size={14} />
+                      {updateStatus().state === "checking" ? "Checking..." : "Check for Updates"}
+                    </button>
+
+                    <Show when={updateStatus().state === "up-to-date"}>
+                      <span class="status-pill status-pill-success" style={{ display: "inline-flex", "align-items": "center", gap: "var(--space-1)" }}>
+                        <Icon name="check" size={12} />
+                        GitTree is up to date ({(updateStatus() as { version: string }).version})
+                      </span>
+                    </Show>
+
+                    <Show when={updateStatus().state === "available"}>
+                      <div style={{ display: "flex", "align-items": "center", gap: "var(--space-2)" }}>
+                        <span class="status-pill status-pill-warning">
+                          New version {(updateStatus() as { version: string }).version} available
+                        </span>
+                        <Show when={(updateStatus() as { url?: string | null }).url}>
+                          <button
+                            type="button"
+                            class="action-btn"
+                            onClick={() => {
+                              const url = (updateStatus() as { url?: string | null }).url;
+                              if (url) void openExternalUrl(url);
+                            }}
+                          >
+                            View Release
+                          </button>
+                        </Show>
+                      </div>
+                    </Show>
+
+                    <Show when={updateStatus().state === "error"}>
+                      <span class="status-pill status-pill-danger" title={(updateStatus() as { message: string }).message}>
+                        {(updateStatus() as { message: string }).message}
+                      </span>
+                    </Show>
+                  </div>
+                </div>
+
+                <div class="settings-field" style={{ "margin-top": "var(--space-3)" }}>
+                  <div class="settings-field-label">Project & Source</div>
+                  <div style={{ display: "flex", gap: "var(--space-3)", "margin-top": "var(--space-1)" }}>
+                    <button
+                      type="button"
+                      class="collapse-toggle"
+                      style={{ padding: "0", color: "var(--color-accent)", "text-decoration": "underline", cursor: "pointer" }}
+                      onClick={() => void openExternalUrl("https://github.com/guidonaselli/gittree")}
+                    >
+                      GitHub Repository
+                    </button>
+                    <button
+                      type="button"
+                      class="collapse-toggle"
+                      style={{ padding: "0", color: "var(--color-accent)", "text-decoration": "underline", cursor: "pointer" }}
+                      onClick={() => void openExternalUrl("https://github.com/guidonaselli/gittree/releases")}
+                    >
+                      Release Notes
+                    </button>
+                  </div>
                 </div>
               </section>
             </Show>
