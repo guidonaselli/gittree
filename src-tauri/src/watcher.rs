@@ -21,9 +21,7 @@ fn is_significant_git_path(relative: &Path) -> bool {
     ) {
         return true;
     }
-    s.starts_with("refs/")
-        || s.starts_with("rebase-merge")
-        || s.starts_with("rebase-apply")
+    s.starts_with("refs/") || s.starts_with("rebase-merge") || s.starts_with("rebase-apply")
 }
 
 fn is_ignored_directory_component(comp: &str) -> bool {
