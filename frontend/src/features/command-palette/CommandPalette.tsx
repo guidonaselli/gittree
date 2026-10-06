@@ -209,7 +209,7 @@ export const CommandPalette: Component<CommandPaletteProps> = (props) => {
 
           <div class="command-palette-footer">
             <span class="command-palette-hint">
-              <kbd>↑</kbd> <kbd>↓</kbd> to navigate
+              <kbd><Icon name="arrow-up" size={10} /></kbd> <kbd><Icon name="arrow-down" size={10} /></kbd> to navigate
             </span>
             <span class="command-palette-hint">
               <kbd>Enter</kbd> to select

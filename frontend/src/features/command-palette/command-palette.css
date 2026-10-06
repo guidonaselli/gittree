@@ -167,6 +167,9 @@
 }
 
 .command-palette-hint kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-family: var(--font-family-mono);
   background-color: var(--color-bg);
   border: var(--border-width-thin) solid var(--color-border);

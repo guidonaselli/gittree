@@ -1,5 +1,6 @@
 import { Show, type Component } from "solid-js";
 import "./sync.css";
+import { Icon } from "../../ui/Icon";
 
 export interface SyncToolbarProps {
   onOpenFetch: () => void;
@@ -31,8 +32,9 @@ export const SyncToolbar: Component<SyncToolbarProps> = (props) => {
       >
         Pull
         <Show when={(props.behindCount ?? 0) > 0}>
-          <span class="sync-badge-ahead" style={{ "margin-left": "var(--space-1)" }}>
-            ↓{props.behindCount}
+          <span class="sync-badge-ahead" style={{ "margin-left": "var(--space-1)", display: "inline-flex", "align-items": "center", gap: "var(--space-1)" }}>
+            <Icon name="arrow-down" size={10} />
+            <span>{props.behindCount}</span>
           </span>
         </Show>
       </button>
@@ -45,8 +47,9 @@ export const SyncToolbar: Component<SyncToolbarProps> = (props) => {
       >
         Push
         <Show when={(props.aheadCount ?? 0) > 0}>
-          <span class="sync-badge-ahead" style={{ "margin-left": "var(--space-1)" }}>
-            ↑{props.aheadCount}
+          <span class="sync-badge-ahead" style={{ "margin-left": "var(--space-1)", display: "inline-flex", "align-items": "center", gap: "var(--space-1)" }}>
+            <Icon name="arrow-up" size={10} />
+            <span>{props.aheadCount}</span>
           </span>
         </Show>
       </button>

@@ -1,6 +1,7 @@
 import { type Component, Show, createMemo } from "solid-js";
 import { branchLabel, isKnown, unknownReason, upstreamBasisLabel, type RepositoryState } from "../../api/types";
 import { SyncToolbar } from "../sync/SyncToolbar";
+import { Icon } from "../../ui/Icon";
 
 export const RepositoryStatus: Component<{
   state: RepositoryState;
@@ -41,7 +42,15 @@ export const RepositoryStatus: Component<{
                 when={info().inferred}
                 fallback={
                   <span class="branch-badge-upstream">
-                    {ab ? `↑${ab.ahead} ↓${ab.behind} vs ${info().label}` : info().label}
+                    <Show when={ab} fallback={<span>{info().label}</span>}>
+                      <span style={{ display: "inline-flex", "align-items": "center", gap: "2px" }}>
+                        <Icon name="arrow-up" size={10} />
+                        <span>{ab!.ahead}</span>
+                        <Icon name="arrow-down" size={10} />
+                        <span>{ab!.behind}</span>
+                        <span>vs {info().label}</span>
+                      </span>
+                    </Show>
                   </span>
                 }
               >
@@ -49,7 +58,15 @@ export const RepositoryStatus: Component<{
                   class="branch-badge-inferred"
                   title="Inferred basis: no explicit @{u} configured, resolved to matching default remote branch"
                 >
-                  {ab ? `↑${ab.ahead} ↓${ab.behind} vs ${info().label} (inferred)` : `${info().label} (inferred)`}
+                  <Show when={ab} fallback={<span>{info().label} (inferred)</span>}>
+                    <span style={{ display: "inline-flex", "align-items": "center", gap: "2px" }}>
+                      <Icon name="arrow-up" size={10} />
+                      <span>{ab!.ahead}</span>
+                      <Icon name="arrow-down" size={10} />
+                      <span>{ab!.behind}</span>
+                      <span>vs {info().label} (inferred)</span>
+                    </span>
+                  </Show>
                 </span>
               </Show>
             );

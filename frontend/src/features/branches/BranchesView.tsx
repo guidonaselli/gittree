@@ -203,9 +203,17 @@ export const BranchesView: Component<BranchesViewProps> = (props) => {
                           when={info().inferred}
                           fallback={
                             <span class="branch-badge-upstream">
-                              {branch.ahead_behind
-                                ? `↑${branch.ahead_behind[0]} ↓${branch.ahead_behind[1]} vs ${info().label}`
-                                : info().label}
+                              {branch.ahead_behind ? (
+                                <span style={{ display: "inline-flex", "align-items": "center", gap: "2px" }}>
+                                  <Icon name="arrow-up" size={10} />
+                                  <span>{branch.ahead_behind[0]}</span>
+                                  <Icon name="arrow-down" size={10} />
+                                  <span>{branch.ahead_behind[1]}</span>
+                                  <span>vs {info().label}</span>
+                                </span>
+                              ) : (
+                                info().label
+                              )}
                             </span>
                           }
                         >
@@ -213,9 +221,17 @@ export const BranchesView: Component<BranchesViewProps> = (props) => {
                             class="branch-badge-inferred"
                             title="Inferred basis: no explicit @{u} configured, resolved to matching default remote branch"
                           >
-                            {branch.ahead_behind
-                              ? `↑${branch.ahead_behind[0]} ↓${branch.ahead_behind[1]} vs ${info().label} (inferred)`
-                              : `${info().label} (inferred)`}
+                            {branch.ahead_behind ? (
+                              <span style={{ display: "inline-flex", "align-items": "center", gap: "2px" }}>
+                                <Icon name="arrow-up" size={10} />
+                                <span>{branch.ahead_behind[0]}</span>
+                                <Icon name="arrow-down" size={10} />
+                                <span>{branch.ahead_behind[1]}</span>
+                                <span>vs {info().label} (inferred)</span>
+                              </span>
+                            ) : (
+                              `${info().label} (inferred)`
+                            )}
                           </span>
                         </Show>
                       )}
