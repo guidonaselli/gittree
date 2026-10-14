@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "=== Verifying GitTree 1.0.0 Packaging Artifacts ==="
-
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APPIMAGE="$REPO_ROOT/target/release/bundle/appimage/GitTree_1.0.0_amd64.AppImage"
-ARCH_PKG="$REPO_ROOT/packaging/arch/gittree-1.0.0-1-x86_64.pkg.tar.zst"
+VERSION=$(grep '^version = ' "$REPO_ROOT/Cargo.toml" | head -n1 | cut -d'"' -f2)
+
+echo "=== Verifying GitTree $VERSION Packaging Artifacts ==="
+
+APPIMAGE="$REPO_ROOT/target/release/bundle/appimage/GitTree_${VERSION}_amd64.AppImage"
+ARCH_PKG="$REPO_ROOT/packaging/arch/gittree-${VERSION}-1-x86_64.pkg.tar.zst"
 
 # 1. Assert artifact existence
 if [ ! -f "$APPIMAGE" ]; then

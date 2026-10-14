@@ -32,10 +32,12 @@ import {
   submitAskpassResponse,
   cancelAskpassResponse,
   getUserThemes,
+  getBranches,
+  checkoutBranch,
   type HistoryScope,
 } from "./api/commands";
 import { onDesktopThemeChanged, onUserThemesChanged, onRepositoryChanged, onWatchDegraded, onAskpassPrompt } from "./api/events";
-import { branchLabel, isKnown, type AskpassPromptPayload, type RepositoryState, type Resolved, type Settings, type SubmoduleMatrixResult, type WorkingCopyStatus } from "./api/types";
+import { branchLabel, isKnown, type AskpassPromptPayload, type BranchEntry, type RepositoryState, type Resolved, type Settings, type SubmoduleMatrixResult, type WorkingCopyStatus } from "./api/types";
 import { WorkingCopyView } from "./features/working-copy/WorkingCopyView";
 import { HistoryView } from "./features/history/HistoryView";
 import { BranchesView } from "./features/branches/BranchesView";
@@ -137,6 +139,7 @@ export const App: Component = () => {
   const repoCache = new Map<string, RepositoryState>();
   const submoduleCache = new Map<string, SubmoduleMatrixResult>();
   const workingCopyCache = new Map<string, Resolved<WorkingCopyStatus>>();
+  const branchCache = new Map<string, BranchEntry[]>();
 
   const [bookmarks, { refetch: refetchBookmarks }] = createResource(getBookmarks);
   const [settingsResult, { refetch: refetchSettings }] = createResource(getSettings);
@@ -158,6 +161,18 @@ export const App: Component = () => {
     const list = await getSubmoduleMatrix(path);
     submoduleCache.set(path, list);
     return list;
+  });
+
+  const [branches, { refetch: refetchBranches }] = createResource(activeViewPath, async (path) => {
+    const cached = branchCache.get(path);
+    if (cached) return cached;
+    try {
+      const list = await getBranches(path);
+      branchCache.set(path, list);
+      return list;
+    } catch {
+      return [];
+    }
   });
 
   const [workingCopy, { refetch: refetchWorkingCopy }] = createResource(activeViewPath, async (path) => {
@@ -198,11 +213,13 @@ export const App: Component = () => {
   function invalidate(path: string, options: { submodules?: boolean } = {}) {
     repoCache.delete(path);
     workingCopyCache.delete(path);
+    branchCache.delete(path);
     if (options.submodules) {
       submoduleCache.delete(path);
     }
     if (path === activeViewPath()) {
       refetchRepoState();
+      refetchBranches();
       if (options.submodules) {
         refetchSubmodules();
       }
@@ -1010,6 +1027,24 @@ export const App: Component = () => {
               }}
               workingCopyStatus={workingCopy() ?? null}
               submoduleCount={submodules()?.submodules.length ?? 0}
+              submodules={submodules()?.submodules}
+              branches={branches() ?? []}
+              onCheckoutBranch={async (name) => {
+                const path = activeViewPath();
+                if (!path) return;
+                try {
+                  const outcome = await checkoutBranch(path, name);
+                  if (outcome.status === "Success") {
+                    setIntegrationNotice(`Switched to branch '${name}'.`);
+                    invalidate(path);
+                  } else {
+                    setMainView("branches");
+                  }
+                } catch (e) {
+                  setIntegrationNotice(`Checkout failed: ${e}`);
+                }
+              }}
+              onDrillInSubmodule={drillIntoSubmodule}
               bookmarks={bookmarks() ?? []}
               isBookmarked={Boolean(workspace.activeGroup() && bookmarks()?.some((b) => b.root === workspace.activeGroup()!.rootPath))}
               onToggleBookmark={() => {

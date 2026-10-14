@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "=== Verifying GitTree 1.0.0 Release Budgets ==="
-
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VERSION=$(grep '^version = ' "$REPO_ROOT/Cargo.toml" | head -n1 | cut -d'"' -f2)
+
+echo "=== Verifying GitTree $VERSION Release Budgets ==="
+
 RELEASE_BIN="$REPO_ROOT/target/release/gittree"
 
 # 1. Binary Size Budget (≤ 40 MB = 41,943,040 bytes)
@@ -38,20 +40,21 @@ echo "Launching Xvfb on $XVFB_DISPLAY..."
 Xvfb "$XVFB_DISPLAY" -screen 0 1280x800x24 &
 XVFB_PID=$!
 
+ISOLATED_XDG=$(mktemp -d /tmp/gittree-budget-xdg-XXXXXX)
 cleanup() {
     echo "Cleaning up..."
     if [ -n "${APP_PID:-}" ] && kill -0 "$APP_PID" 2>/dev/null; then
         kill "$APP_PID" 2>/dev/null || true
     fi
     kill "$XVFB_PID" 2>/dev/null || true
-    rm -rf "$FIXTURE_DIR"
+    rm -rf "$FIXTURE_DIR" "$ISOLATED_XDG"
 }
 trap cleanup EXIT
 
 # Pre-populate localStorage with the superproject open in gittree.workspace
 # We can also pass the path directly as argument to GitTree
 echo "Launching GitTree with reference superproject..."
-DISPLAY="$XVFB_DISPLAY" GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 "$RELEASE_BIN" "$FIXTURE_DIR" &
+XDG_DATA_HOME="$ISOLATED_XDG/data" XDG_CONFIG_HOME="$ISOLATED_XDG/config" DISPLAY="$XVFB_DISPLAY" GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 "$RELEASE_BIN" "$FIXTURE_DIR" &
 APP_PID=$!
 
 # Allow 7 seconds for the app to initialize, open the repo, compute status & matrix, and settle into idle

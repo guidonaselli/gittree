@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "=== Verifying GitTree 1.0.0 Offline Usability & Remote Error Surfacing ==="
-
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VERSION=$(grep '^version = ' "$REPO_ROOT/Cargo.toml" | head -n1 | cut -d'"' -f2)
+
+echo "=== Verifying GitTree $VERSION Offline Usability & Remote Error Surfacing ==="
+
 RELEASE_BIN="$REPO_ROOT/target/release/gittree"
 
 # 1. Test in an isolated unshared network namespace (zero internet access)

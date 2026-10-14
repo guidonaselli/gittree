@@ -297,7 +297,7 @@ export const SettingsModal: Component<SettingsModalProps> = (props) => {
 
             <Show when={activeTab() === "about"}>
               <section class="settings-section">
-                <div class="settings-section-title">GitTree 1.0.0</div>
+                <div class="settings-section-title">GitTree 1.1.0</div>
                 <div class="settings-field-desc">
                   A high-performance desktop Git client for Linux built around a real-time submodule workspace and the daily repository workflow.
                 </div>

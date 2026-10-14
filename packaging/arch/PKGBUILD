@@ -1,6 +1,6 @@
 # Maintainer: Guido Naselli <guidonaselli@gmail.com>
 pkgname=gittree
-pkgver=1.0.0
+pkgver=1.1.0
 pkgrel=1
 pkgdesc="Git and submodule workspace client"
 arch=('x86_64')

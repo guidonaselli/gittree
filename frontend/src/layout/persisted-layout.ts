@@ -41,3 +41,13 @@ export function useSidebarCollapsed() {
 export function useDetailPanelCollapsed() {
   return persistedSignal<boolean>("gittree.layout.detailPanelCollapsed", true);
 }
+
+export function useSidebarSectionsCollapsed() {
+  return persistedSignal<Record<string, boolean>>("gittree.layout.sidebarSections", {
+    workspace: false,
+    branches: false,
+    submodules: false,
+    tags: true,
+    stashes: true,
+  });
+}
