@@ -4,9 +4,9 @@ Desktop Git client for Linux (Tauri 2 + Rust + Solid) whose differentiator is a 
 
 ## Where the truth lives
 
-- Planning: `openspec/changes/build-gittree-client/`. `tasks.md` is the only progress record (task numbers like `1.16`, gates `G0`..`G6`); `proposal.md`, `design.md` and `specs/` hold requirements and decisions.
-- Project context and authoring rules: `openspec/config.yaml`.
-- Status: `openspec list` plus `tasks.md`. Never copy task status into another file.
+- Planning: `lmd/`; finished changes in `lmd/archive/` (e.g. `2026-10-06-build-gittree-client`). `tasks.md` is the only progress record (task numbers like `1.16`, gates `G0`..`G6`); `proposal.md`, `design.md` and `lmd/specs/` hold requirements and decisions.
+- Project context and authoring rules: `lmd/CONTEXT.md`.
+- Status: `lmd status` plus `tasks.md`. Never copy task status into another file.
 - Read `design.md` and the relevant `specs/<area>/spec.md` before changing behavior in that area; do not read the whole change up front.
 
 ## Hard rules
